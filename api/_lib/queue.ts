@@ -1,8 +1,12 @@
-import { kv } from "@vercel/kv";
-import type { PendingServerImport } from "./smsImport";
+﻿import type { PendingServerImport } from "./smsImport";
 
 const QUEUE_KEY = "options-ledger-v2.pending-import-queue";
 const MAX_QUEUE = 200;
+
+type KvClient = {
+  get<T>(key: string): Promise<T | null>;
+  set(key: string, value: unknown): Promise<unknown>;
+};
 
 export class QueueUnavailableError extends Error {
   constructor(message: string) {
@@ -31,9 +35,19 @@ function normalizeQueueError(error: unknown): QueueUnavailableError {
   return new QueueUnavailableError(`KV request failed: ${message}`);
 }
 
-export async function readQueue(): Promise<PendingServerImport[]> {
+async function getKvClient(): Promise<KvClient> {
   ensureKvConfigured();
   try {
+    const module = await import("@vercel/kv");
+    return module.kv as KvClient;
+  } catch (error) {
+    throw normalizeQueueError(error);
+  }
+}
+
+export async function readQueue(): Promise<PendingServerImport[]> {
+  try {
+    const kv = await getKvClient();
     const queue = await kv.get<PendingServerImport[]>(QUEUE_KEY);
     return Array.isArray(queue) ? queue : [];
   } catch (error) {
@@ -42,9 +56,9 @@ export async function readQueue(): Promise<PendingServerImport[]> {
 }
 
 export async function writeQueue(queue: PendingServerImport[]): Promise<void> {
-  ensureKvConfigured();
   const trimmed = queue.slice(-MAX_QUEUE);
   try {
+    const kv = await getKvClient();
     await kv.set(QUEUE_KEY, trimmed);
   } catch (error) {
     throw normalizeQueueError(error);
