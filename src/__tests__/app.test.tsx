@@ -32,7 +32,7 @@ describe("App dashboard", () => {
 
     const navButton = screen.getByRole("button", { name: "17.00 / 17.00 pt" });
     await user.click(navButton);
-    expect(screen.getByRole("button", { name: "\u20A94,250,000" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "â‚©4,250,000" })).toBeInTheDocument();
   });
 
   test("adds trades and merges same option into one open position", async () => {
@@ -83,33 +83,33 @@ describe("App dashboard", () => {
     expect(screen.getByRole("button", { name: /Thu Put 330/ })).toBeInTheDocument();
   });
 
-  test("opens new trade prefilled from sms query", async () => {
+  test("allows editing parsed buy transaction before review", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
-    const sms = [
-      "[Web¹ß½Å]",
-      "¸Å¼öÃ¼°á",
-      "ÄÚ½ºÇÇÀ§Å¬¸®M C 350",
-      "2°è¾à",
-      "0.88P",
-    ].join("\n");
 
-    window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}&sentAt=2026-03-06T12:00:00.000Z`);
+    window.history.replaceState(
+      {},
+      "",
+      "/?underlying=Mon&type=Call&strike=350&qty=2&price=0.88&sentAt=2026-03-06T12:00:00.000Z",
+    );
     render(<App />);
 
-    expect(screen.getByText("Parsed Transaction")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Review Parsed" }));
-
+    expect(await screen.findByText("Parsed Transaction")).toBeInTheDocument();
     expect(screen.getByLabelText("Strike")).toHaveValue("350");
     expect(screen.getByLabelText("Qty")).toHaveValue("2");
     expect(screen.getByLabelText("Price")).toHaveValue("0.88");
-    expect(screen.getByRole("button", { name: "Call" })).toHaveClass("active");
-    expect(screen.getByRole("button", { name: "Mon" })).toHaveClass("active");
 
+    await user.click(screen.getByRole("button", { name: "Put" }));
+    await user.clear(screen.getByLabelText("Strike"));
+    await user.type(screen.getByLabelText("Strike"), "360");
+
+    await user.click(screen.getByRole("button", { name: "Review Parsed" }));
     await user.click(screen.getByRole("button", { name: "Save Trade" }));
-    expect(screen.getByRole("button", { name: /Mon Call 350/ })).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: /Mon Put 360/ })).toBeInTheDocument();
     expect(window.location.search).toBe("");
   });
+
   test("opens position action prefilled from sell sms query", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
@@ -127,18 +127,14 @@ describe("App dashboard", () => {
 
     firstView.unmount();
 
-    const sms = [
-      "[Web¹ß½Å]",
-      "¸ÅµµÃ¼°á",
-      "ÄÚ½ºÇÇÀ§Å¬¸® C 350",
-      "1°è¾à",
-      "0.88P",
-    ].join("\n");
-
-    window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}&sentAt=2026-03-10T12:00:00.000Z`);
+    window.history.replaceState(
+      {},
+      "",
+      "/?side=sell&underlying=Thu&type=Call&strike=350&qty=1&price=0.88&sentAt=2026-03-10T12:00:00.000Z",
+    );
     render(<App />);
 
-    expect(screen.getByText("Parsed Transaction")).toBeInTheDocument();
+    expect(await screen.findByText("Parsed Transaction")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Review Parsed" }));
 
     expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
@@ -146,6 +142,7 @@ describe("App dashboard", () => {
     expect(screen.getByLabelText("Price")).toHaveValue("0.88");
     expect(window.location.search).toBe("");
   });
+
   test("kospi input uses integer entry and keeps latest value", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
@@ -192,7 +189,3 @@ describe("App dashboard", () => {
     });
   });
 });
-
-
-
-
