@@ -6,6 +6,7 @@ import {
 
 const STORAGE_KEY = "options-ledger-v2.state";
 const RESET_NAV_KEY = "options-ledger-v2.reset-nav";
+const KOSPI_KEY = "options-ledger-v2.kospi200";
 
 export function loadResetNavPoints(): number | undefined {
   const raw = window.localStorage.getItem(RESET_NAV_KEY);
@@ -16,6 +17,17 @@ export function loadResetNavPoints(): number | undefined {
 
 export function saveResetNavPoints(points: number): void {
   window.localStorage.setItem(RESET_NAV_KEY, String(points));
+}
+
+export function loadKospi200Value(): number | undefined {
+  const raw = window.localStorage.getItem(KOSPI_KEY);
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function saveKospi200Value(value: number): void {
+  window.localStorage.setItem(KOSPI_KEY, String(value));
 }
 
 export function loadLedgerState(): LedgerState {

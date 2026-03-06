@@ -13,7 +13,13 @@ import {
   type UnderlyingType,
 } from "./domain/ledger";
 import { formatKrwFromPoints, formatPoints, formatSignedPoints } from "./domain/format";
-import { loadLedgerState, saveLedgerState, saveResetNavPoints } from "./storage/local";
+import {
+  loadKospi200Value,
+  loadLedgerState,
+  saveKospi200Value,
+  saveLedgerState,
+  saveResetNavPoints,
+} from "./storage/local";
 
 type Tone = "profit" | "balance";
 
@@ -81,6 +87,44 @@ function parsePriceCents(value: string): number {
   return Math.max(0, Math.round(parsed * 100));
 }
 
+function applyDigitShiftInput(nextRaw: string): string {
+  const cleaned = nextRaw.replace(/[^0-9.]/g, "");
+  if (!cleaned) return "0.00";
+
+  if (cleaned.includes(".")) {
+    const parsedDecimal = Number(cleaned);
+    return (Number.isFinite(parsedDecimal) ? Math.max(0, parsedDecimal) : 0).toFixed(2);
+  }
+
+  const cents = Number(cleaned);
+  return (Number.isFinite(cents) ? cents / 100 : 0).toFixed(2);
+}
+
+function handleDigitShiftKeyDown(
+  event: KeyboardEvent<HTMLInputElement>,
+  currentValue: string,
+  onChange: (value: string) => void,
+): void {
+  if (/^[0-9]$/.test(event.key)) {
+    event.preventDefault();
+    const nextCents = parsePriceCents(currentValue) * 10 + Number(event.key);
+    onChange((nextCents / 100).toFixed(2));
+    return;
+  }
+
+  if (event.key === "Backspace") {
+    event.preventDefault();
+    const nextCents = Math.floor(parsePriceCents(currentValue) / 10);
+    onChange((nextCents / 100).toFixed(2));
+    return;
+  }
+
+  if (event.key === "Delete") {
+    event.preventDefault();
+    onChange("0.00");
+  }
+}
+
 function ToggleGroup<T extends string>(props: {
   value: T;
   options: T[];
@@ -126,25 +170,7 @@ function NumberField(props: {
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
     if (!props.digitShift) return;
-
-    if (/^[0-9]$/.test(event.key)) {
-      event.preventDefault();
-      const nextCents = parsePriceCents(props.value) * 10 + Number(event.key);
-      props.onChange((nextCents / 100).toFixed(2));
-      return;
-    }
-
-    if (event.key === "Backspace") {
-      event.preventDefault();
-      const nextCents = Math.floor(parsePriceCents(props.value) / 10);
-      props.onChange((nextCents / 100).toFixed(2));
-      return;
-    }
-
-    if (event.key === "Delete") {
-      event.preventDefault();
-      props.onChange("0.00");
-    }
+    handleDigitShiftKeyDown(event, props.value, props.onChange);
   }
 
   function onInputChange(nextRaw: string): void {
@@ -153,20 +179,7 @@ function NumberField(props: {
       return;
     }
 
-    const cleaned = nextRaw.replace(/[^0-9.]/g, "");
-    if (!cleaned) {
-      props.onChange("0.00");
-      return;
-    }
-
-    if (cleaned.includes(".")) {
-      const parsedDecimal = Number(cleaned);
-      props.onChange((Number.isFinite(parsedDecimal) ? Math.max(0, parsedDecimal) : 0).toFixed(2));
-      return;
-    }
-
-    const cents = Number(cleaned);
-    props.onChange((Number.isFinite(cents) ? cents / 100 : 0).toFixed(2));
+    props.onChange(applyDigitShiftInput(nextRaw));
   }
 
   return (
@@ -199,9 +212,13 @@ export function App(): JSX.Element {
   const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults(loadLedgerState()));
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
-  const [kospiInput, setKospiInput] = useState<string>("");
+  const [kospiInput, setKospiInput] = useState<string>(() => {
+    const latest = loadKospi200Value();
+    return latest === undefined ? "0.00" : latest.toFixed(2);
+  });
   const [resetNavInput, setResetNavInput] = useState<string>(formatPoints(state.startingNavPoints));
   const [isBusy, setBusy] = useState(false);
+  const [showNavKrw, setShowNavKrw] = useState(false);
   const pendingReconcile = useRef(0);
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
@@ -280,6 +297,7 @@ export function App(): JSX.Element {
   function handleApplyKospiAll(): void {
     const kospi = Number(kospiInput);
     if (!Number.isFinite(kospi)) return;
+    saveKospi200Value(kospi);
     const nextState = applyKospiIntrinsicAll(state, kospi);
     mutate(nextState);
   }
@@ -291,7 +309,7 @@ export function App(): JSX.Element {
     mutate(nextState, () => {
       setTradeOpen(false);
       setSelectedPositionId(null);
-      setKospiInput("");
+      setKospiInput(loadKospi200Value()?.toFixed(2) ?? "0.00");
       setResetNavInput(formatPoints(navPoints));
     });
   }
@@ -306,7 +324,18 @@ export function App(): JSX.Element {
       ) : null}
 
       <section className="card">
-        <MetricRow label="NAV" points={dashboard.navPoints} tone="balance" />
+        <div className="metric-row nav-row">
+          <div className="metric-label">NAV</div>
+          <button
+            type="button"
+            className={`metric-toggle ${valueColor(dashboard.navPoints, "balance")}`}
+            onClick={() => setShowNavKrw((current) => !current)}
+          >
+            {showNavKrw ? formatKrwFromPoints(dashboard.navPoints) : `${formatPoints(dashboard.navPoints)} pt`}
+          </button>
+          <div className="metric-sub-hint">Tap value</div>
+        </div>
+
         <MetricRow label="Option Values" points={dashboard.marketValuePoints} tone="balance" showKrw={false} />
         <MetricRow label="Cash" points={dashboard.cashPoints} tone="balance" showKrw={false} />
         <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed showKrw={false} />
@@ -326,7 +355,8 @@ export function App(): JSX.Element {
         ) : (
           <div className="positions-list">
             {state.openPositions.map((position) => {
-              const pnlPoints = (position.currentPrice - position.entryPrice) * position.qty;
+              const pnlPoints =
+                (position.currentPrice - position.entryPrice) * position.qty - position.remainingEntryFeePoints;
               return (
                 <button
                   key={position.id}
@@ -342,7 +372,7 @@ export function App(): JSX.Element {
                   </div>
                   <div className="position-row">
                     <span className={`position-line-pnl ${valueColor(pnlPoints, "profit")}`}>{formatSignedPoints(pnlPoints)} pt</span>
-                    <span className="position-line-sub">Mkt {formatPoints(position.currentPrice)}</span>
+                    <span className="position-line-sub">Mkt {formatPoints(position.currentPrice * position.qty)}</span>
                   </div>
                 </button>
               );
@@ -361,8 +391,8 @@ export function App(): JSX.Element {
             className="number-input"
             value={kospiInput}
             inputMode="decimal"
-            placeholder="Enter KOSPI200"
-            onChange={(event) => setKospiInput(event.target.value)}
+            onKeyDown={(event) => handleDigitShiftKeyDown(event, kospiInput, setKospiInput)}
+            onChange={(event) => setKospiInput(applyDigitShiftInput(event.target.value))}
           />
           <button type="button" className="primary-btn" onClick={handleApplyKospiAll}>
             Apply All

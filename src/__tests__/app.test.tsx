@@ -25,6 +25,16 @@ describe("App dashboard", () => {
     expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
+  test("nav value toggles points and KRW on tap", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    const navButton = screen.getByRole("button", { name: "17.00 pt" });
+    await user.click(navButton);
+    expect(screen.getByRole("button", { name: "\u20A94,250,000" })).toBeInTheDocument();
+  });
+
   test("adds trades and merges same option into one open position", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
@@ -54,18 +64,20 @@ describe("App dashboard", () => {
     expect(screen.getAllByText("+0.50 pt").length).toBeGreaterThan(0);
   });
 
-  test("apply-all updates open positions using intrinsic values", async () => {
+  test("kospi input uses shifted-decimal entry and keeps latest value", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
-    render(<App />);
+    const view = render(<App />);
 
-    await addBaseTrade(user);
-
-    await user.type(screen.getByLabelText("KOSPI200"), "360");
+    await user.clear(screen.getByLabelText("KOSPI200"));
+    await user.type(screen.getByLabelText("KOSPI200"), "36025");
     await user.click(screen.getByRole("button", { name: "Apply All" }));
 
-    expect(screen.getByText(/Mkt 10.00/)).toBeInTheDocument();
-    expect(screen.getAllByText("+8.75 pt").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("KOSPI200")).toHaveValue("360.25");
+
+    view.unmount();
+    render(<App />);
+    expect(screen.getByLabelText("KOSPI200")).toHaveValue("360.25");
   });
 
   test("hard reset clears ledger and sets NAV/Cash to entered points", async () => {
@@ -98,3 +110,4 @@ describe("App dashboard", () => {
     });
   });
 });
+

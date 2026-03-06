@@ -38,7 +38,20 @@ describe("ledger domain", () => {
     expect(state.openPositions[0].entryPrice).toBe(1.375);
   });
 
-  test("update position changes current price and unrealized", () => {
+  test("buy fee reduces NAV at entry", () => {
+    const state = addTrade(createInitialLedgerState(), {
+      underlying: "Thu",
+      type: "Call",
+      strike: 350,
+      qty: 1,
+      price: 1,
+    });
+    const dashboard = buildDashboard(state);
+
+    expect(dashboard.navPoints).toBeCloseTo(16.996, 6);
+  });
+
+  test("update position includes entry fee in unrealized", () => {
     const base = addTrade(createInitialLedgerState(), {
       underlying: "Thu",
       type: "Call",
@@ -50,11 +63,10 @@ describe("ledger domain", () => {
     const next = updatePositionPrice(base, positionId, 1.5, new Date("2026-03-05T12:00:00.000Z"));
     const dashboard = buildDashboard(next);
 
-    expect(next.openPositions[0].currentPrice).toBe(1.5);
-    expect(dashboard.unrealizedPoints).toBe(0.5);
+    expect(dashboard.unrealizedPoints).toBeCloseTo(0.496, 6);
   });
 
-  test("partial close updates cash, qty and realized", () => {
+  test("partial close applies buy/sell fees to realized", () => {
     const base = addTrade(createInitialLedgerState(), {
       underlying: "Thu",
       type: "Call",
@@ -65,10 +77,9 @@ describe("ledger domain", () => {
     const positionId = base.openPositions[0].id;
     const next = closePosition(base, positionId, 1, 1.5, new Date("2026-03-05T12:00:00.000Z"));
 
-    expect(next.cashPoints).toBe(16.5);
-    expect(next.openPositions[0].qty).toBe(1);
-    expect(next.realizedTodayPoints).toBe(0.5);
-    expect(next.realizedWeekPoints).toBe(0.5);
+    expect(next.cashPoints).toBeCloseTo(16.486, 6);
+    expect(next.realizedTodayPoints).toBeCloseTo(0.49, 6);
+    expect(next.realizedWeekPoints).toBeCloseTo(0.49, 6);
   });
 
   test("apply-all sets intrinsic value to call and put", () => {
@@ -102,8 +113,9 @@ describe("ledger domain", () => {
     expect(put2?.currentPrice).toBe(0);
   });
 
-  test("default underlying follows Thu 3 AM to Mon 3 AM rule", () => {
-    expect(getDefaultUnderlying(new Date("2026-03-06T12:00:00"))).toBe("Mon");
+  test("default underlying is Thu between Thu 3AM and Mon 3AM, otherwise Mon", () => {
+    expect(getDefaultUnderlying(new Date("2026-03-06T12:00:00"))).toBe("Thu");
+    expect(getDefaultUnderlying(new Date("2026-03-10T12:00:00"))).toBe("Mon");
     expect(getDefaultUnderlying(new Date("2026-03-05T02:30:00"))).toBe("Mon");
     expect(getDefaultUnderlying(new Date("2026-03-05T04:00:00"))).toBe("Thu");
   });

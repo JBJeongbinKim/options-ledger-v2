@@ -1,4 +1,5 @@
 export const POINT_TO_KRW = 250000;
+export const TRADE_FEE_RATE = 0.004;
 
 export type PositionType = "Call" | "Put";
 export type UnderlyingType = "Mon" | "Thu" | "Month";
@@ -12,6 +13,7 @@ export interface OpenPosition {
   qty: number;
   entryPrice: number;
   currentPrice: number;
+  remainingEntryFeePoints: number;
 }
 
 export interface LedgerState {
@@ -47,16 +49,21 @@ export function normalizeOpenPositions(openPositions: OpenPosition[]): OpenPosit
   const merged = new Map<string, OpenPosition>();
 
   for (const position of openPositions) {
-    const key = positionKey(position);
+    const normalized: OpenPosition = {
+      ...position,
+      remainingEntryFeePoints: position.remainingEntryFeePoints ?? 0,
+    };
+
+    const key = positionKey(normalized);
     const existing = merged.get(key);
     if (!existing) {
-      merged.set(key, { ...position });
+      merged.set(key, { ...normalized });
       continue;
     }
 
-    const totalQty = existing.qty + position.qty;
-    const weightedEntry = (existing.entryPrice * existing.qty + position.entryPrice * position.qty) / totalQty;
-    const newer = new Date(position.updatedAt).getTime() >= new Date(existing.updatedAt).getTime() ? position : existing;
+    const totalQty = existing.qty + normalized.qty;
+    const weightedEntry = (existing.entryPrice * existing.qty + normalized.entryPrice * normalized.qty) / totalQty;
+    const newer = new Date(normalized.updatedAt).getTime() >= new Date(existing.updatedAt).getTime() ? normalized : existing;
 
     merged.set(key, {
       ...existing,
@@ -65,6 +72,7 @@ export function normalizeOpenPositions(openPositions: OpenPosition[]): OpenPosit
       qty: totalQty,
       entryPrice: weightedEntry,
       currentPrice: newer.currentPrice,
+      remainingEntryFeePoints: existing.remainingEntryFeePoints + normalized.remainingEntryFeePoints,
     });
   }
 
@@ -83,7 +91,10 @@ export function createInitialLedgerState(resetNavPoints?: number): LedgerState {
 }
 
 export function calculateUnrealizedPoints(openPositions: OpenPosition[]): number {
-  return openPositions.reduce((sum, pos) => sum + (pos.currentPrice - pos.entryPrice) * pos.qty, 0);
+  return openPositions.reduce(
+    (sum, pos) => sum + (pos.currentPrice - pos.entryPrice) * pos.qty - pos.remainingEntryFeePoints,
+    0,
+  );
 }
 
 export function calculateMarketValuePoints(openPositions: OpenPosition[]): number {
@@ -95,6 +106,9 @@ export function sortOpenPositions(openPositions: OpenPosition[]): OpenPosition[]
 }
 
 export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = new Date()): LedgerState {
+  const buyNotional = trade.price * trade.qty;
+  const buyFee = buyNotional * TRADE_FEE_RATE;
+
   const newPosition: OpenPosition = {
     id: `pos-${now.getTime()}-${Math.random().toString(16).slice(2, 8)}`,
     updatedAt: now.toISOString(),
@@ -104,6 +118,7 @@ export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = n
     qty: trade.qty,
     entryPrice: trade.price,
     currentPrice: trade.price,
+    remainingEntryFeePoints: buyFee,
   };
 
   const key = positionKey(newPosition);
@@ -119,13 +134,14 @@ export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = n
           entryPrice: (position.entryPrice * position.qty + trade.price * trade.qty) / totalQty,
           currentPrice: trade.price,
           updatedAt: now.toISOString(),
+          remainingEntryFeePoints: position.remainingEntryFeePoints + buyFee,
         };
       })
     : [newPosition, ...state.openPositions];
 
   return {
     ...state,
-    cashPoints: state.cashPoints - trade.price * trade.qty,
+    cashPoints: state.cashPoints - buyNotional - buyFee,
     openPositions: sortOpenPositions(nextOpenPositions),
   };
 }
@@ -166,7 +182,10 @@ export function closePosition(
   if (!target) return state;
 
   const executedQty = Math.min(qty, target.qty);
-  const realizedPoints = (price - target.entryPrice) * executedQty;
+  const sellNotional = price * executedQty;
+  const sellFee = sellNotional * TRADE_FEE_RATE;
+  const entryFeeShare = target.remainingEntryFeePoints * (executedQty / target.qty);
+  const realizedPoints = (price - target.entryPrice) * executedQty - entryFeeShare - sellFee;
 
   const updatedPositions = state.openPositions
     .map((position) => {
@@ -180,13 +199,14 @@ export function closePosition(
         qty: remainingQty,
         currentPrice: price,
         updatedAt: now.toISOString(),
+        remainingEntryFeePoints: Math.max(0, position.remainingEntryFeePoints - entryFeeShare),
       };
     })
     .filter((position): position is OpenPosition => position !== null);
 
   return {
     ...state,
-    cashPoints: state.cashPoints + price * executedQty,
+    cashPoints: state.cashPoints + sellNotional - sellFee,
     realizedTodayPoints: state.realizedTodayPoints + realizedPoints,
     realizedWeekPoints: state.realizedWeekPoints + realizedPoints,
     openPositions: sortOpenPositions(updatedPositions),
@@ -215,14 +235,8 @@ export function applyKospiIntrinsicAll(state: LedgerState, kospi200: number, now
 export function getDefaultUnderlying(now: Date): UnderlyingType {
   const day = now.getDay();
   const hour = now.getHours();
-  const isFridayToSunday = day === 5 || day === 6 || day === 0;
-  const isEarlyMonday = day === 1 && hour < 3;
-  const isEarlyThursday = day === 4 && hour < 3;
-
-  if (isFridayToSunday || isEarlyMonday || isEarlyThursday) {
-    return "Mon";
-  }
-  return "Thu";
+  const inThuWindow = (day === 4 && hour >= 3) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 3);
+  return inThuWindow ? "Thu" : "Mon";
 }
 
 export function buildDashboard(state: LedgerState): DashboardSnapshot {

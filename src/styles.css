@@ -87,6 +87,26 @@ body {
   font-weight: 700;
 }
 
+.nav-row {
+  align-items: center;
+}
+
+.metric-toggle {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  justify-self: end;
+  cursor: pointer;
+}
+
+.metric-sub-hint {
+  text-align: right;
+  color: #6b7892;
+  font-size: 0.78rem;
+}
+
 .primary-btn,
 .ghost-btn,
 .step-btn,
@@ -155,16 +175,18 @@ body {
   font-weight: 700;
 }
 
-.position-line-sub {
+.position-line-sub,
+.position-line-pnl {
   font-size: 0.88rem;
-  color: #4d5f82;
   font-variant-numeric: tabular-nums;
 }
 
+.position-line-sub {
+  color: #4d5f82;
+}
+
 .position-line-pnl {
-  font-size: 0.8rem;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
 .sheet-overlay {
@@ -270,18 +292,6 @@ body {
   gap: 6px;
 }
 
-.neutral {
-  color: #111111;
-}
-
-.pos {
-  color: #0c56d8;
-}
-
-.neg {
-  color: #cc1b1b;
-}
-
 .busy-indicator {
   position: sticky;
   top: 8px;
@@ -316,4 +326,16 @@ body {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+.neutral {
+  color: #111111;
+}
+
+.pos {
+  color: #0c56d8;
+}
+
+.neg {
+  color: #cc1b1b;
 }
