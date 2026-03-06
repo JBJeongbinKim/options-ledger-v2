@@ -44,7 +44,7 @@ body {
 
 .card-topline-open {
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 .card-topline-open h2 {
@@ -60,10 +60,12 @@ body {
 
 .metric-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 168px;
   grid-template-rows: auto auto;
   gap: 2px 10px;
   padding: 9px 0;
+  min-height: 46px;
+  align-items: center;
   border-top: 1px solid #edf2fa;
 }
 
@@ -81,25 +83,42 @@ body {
 .metric-value,
 .metric-sub,
 .metric-sub-empty {
+  width: 168px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
 .metric-value {
   font-weight: 700;
+  align-self: center;
 }
 
 .nav-row {
   align-items: center;
+  grid-template-rows: auto;
+  gap: 0 10px;
+}
+
+.nav-row .metric-label {
+  grid-row: 1;
+}
+
+.nav-row .metric-toggle {
+  grid-row: 1;
 }
 
 .metric-toggle {
+  width: 168px;
   background: none;
   border: 0;
+  padding: 0;
+  margin: 0;
   font: inherit;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   justify-self: end;
+  text-align: right;
   cursor: pointer;
 }
 
@@ -370,4 +389,3 @@ body {
 .neg {
   color: #cc1b1b;
 }
-
