@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
 import {
   addTrade,
   applyKospiIntrinsicAll,
@@ -85,6 +85,74 @@ function createPositionActionDefaults(position: OpenPosition): PositionActionFor
   };
 }
 
+
+function inferUnderlyingFromText(message: string): UnderlyingType | null {
+  if (/위클리M|weekly\s*m|\bmon\b/i.test(message)) return "Mon";
+  if (/위클리W|weekly\s*w|\bthu\b|목/i.test(message)) return "Thu";
+  if (/월물|\bmonth\b/i.test(message)) return "Month";
+  return null;
+}
+
+function parseTradeFromSmsText(message: string): TradeFormState | null {
+  const normalized = message.replace(/\r/g, "");
+  if (!/매수체결/i.test(normalized)) return null;
+
+  const typeMatch = normalized.match(/\b([CP])\b/i);
+  const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
+  const qtyMatch = normalized.match(/([0-9]+)\s*계약/i);
+  const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
+
+  if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
+
+  const parsedStrike = Number(strikeMatch[1]);
+  const parsedQty = Number(qtyMatch[1]);
+  const parsedPrice = Number(priceMatch[1]);
+
+  if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
+
+  const inferredUnderlying = inferUnderlyingFromText(normalized);
+
+  return {
+    underlying: inferredUnderlying ?? getDefaultUnderlying(new Date()),
+    type: typeMatch[1].toUpperCase() === "P" ? "Put" : "Call",
+    strike: String(Math.max(0, Math.round(parsedStrike))),
+    qty: String(Math.max(1, Math.round(parsedQty))),
+    price: Math.max(0, parsedPrice).toFixed(2),
+  };
+}
+
+function parseTradeFromUrl(): TradeFormState | null {
+  const params = new URLSearchParams(window.location.search);
+  const smsMessage = params.get("sms");
+  if (smsMessage) return parseTradeFromSmsText(smsMessage);
+
+  const typeParam = params.get("type");
+  const strikeParam = params.get("strike");
+  const qtyParam = params.get("qty");
+  const priceParam = params.get("price");
+
+  if (!typeParam || !strikeParam || !qtyParam || !priceParam) return null;
+
+  const parsedStrike = Number(strikeParam);
+  const parsedQty = Number(qtyParam);
+  const parsedPrice = Number(priceParam);
+  if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
+
+  const type: PositionType = /put|p/i.test(typeParam) ? "Put" : "Call";
+  const underlyingParam = params.get("underlying");
+  const underlying: UnderlyingType =
+    underlyingParam === "Mon" || underlyingParam === "Thu" || underlyingParam === "Month"
+      ? underlyingParam
+      : getDefaultUnderlying(new Date());
+
+  return {
+    underlying,
+    type,
+    strike: String(Math.max(0, Math.round(parsedStrike))),
+    qty: String(Math.max(1, Math.round(parsedQty))),
+    price: Math.max(0, parsedPrice).toFixed(2),
+  };
+}
 function parsePriceCents(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -246,6 +314,26 @@ export function App(): JSX.Element {
     () => state.openPositions.find((position) => position.id === selectedPositionId) ?? null,
     [state.openPositions, selectedPositionId],
   );
+
+  useEffect(() => {
+    const importedTrade = parseTradeFromUrl();
+    if (!importedTrade) return;
+
+    setTradeForm(importedTrade);
+    setTradeOpen(true);
+    window.setTimeout(() => strikeInputRef.current?.focus(), 0);
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete("sms");
+    params.delete("type");
+    params.delete("strike");
+    params.delete("qty");
+    params.delete("price");
+    params.delete("underlying");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, []);
 
   function openTradeSheet(): void {
     setTradeForm(createTradeDefaults());
@@ -658,5 +746,8 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
+
+
 
 

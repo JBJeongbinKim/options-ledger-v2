@@ -83,6 +83,30 @@ describe("App dashboard", () => {
     expect(screen.getByRole("button", { name: /Thu Put 330/ })).toBeInTheDocument();
   });
 
+  test("opens new trade prefilled from sms query", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const sms = [
+      "[Web발신]",
+      "매수체결",
+      "코스피위클리M C 350",
+      "2계약",
+      "0.88P",
+    ].join("\n");
+
+    window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}`);
+    render(<App />);
+
+    expect(screen.getByLabelText("Strike")).toHaveValue("350");
+    expect(screen.getByLabelText("Qty")).toHaveValue("2");
+    expect(screen.getByLabelText("Price")).toHaveValue("0.88");
+    expect(screen.getByRole("button", { name: "Call" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Mon" })).toHaveClass("active");
+
+    await user.click(screen.getByRole("button", { name: "Save Trade" }));
+    expect(screen.getByRole("button", { name: /Mon Call 350/ })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
   test("kospi input uses integer entry and keeps latest value", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
@@ -129,3 +153,4 @@ describe("App dashboard", () => {
     });
   });
 });
+
