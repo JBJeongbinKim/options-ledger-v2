@@ -86,45 +86,95 @@ function createPositionActionDefaults(position: OpenPosition): PositionActionFor
 }
 
 
-function inferUnderlyingFromText(message: string): UnderlyingType | null {
-  if (/위클리M|weekly\s*m|\bmon\b/i.test(message)) return "Mon";
-  if (/위클리W|weekly\s*w|\bthu\b|목/i.test(message)) return "Thu";
-  if (/월물|\bmonth\b/i.test(message)) return "Month";
-  return null;
+function resolveWeeklyUnderlyingByTime(referenceDate: Date): UnderlyingType {
+  const day = referenceDate.getDay();
+  const hour = referenceDate.getHours();
+  const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
+  return inMonWindow ? "Mon" : "Thu";
 }
 
-function parseTradeFromSmsText(message: string): TradeFormState | null {
+function parseReferenceDateFromParams(params: URLSearchParams): Date {
+  const sentAt = params.get("sentAt");
+  if (!sentAt) return new Date();
+
+  const parsed = new Date(sentAt);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function inferUnderlyingFromText(message: string, referenceDate: Date): UnderlyingType {
+  if (/코스피200/i.test(message)) return "Month";
+  if (/코스피위클리/i.test(message)) return resolveWeeklyUnderlyingByTime(referenceDate);
+  return getDefaultUnderlying(referenceDate);
+}
+
+interface SmsImportActionBuy {
+  mode: "buy";
+  trade: TradeFormState;
+}
+
+interface SmsImportActionSell {
+  mode: "sell";
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: number;
+  qty: number;
+  price: number;
+}
+
+type SmsImportAction = SmsImportActionBuy | SmsImportActionSell;
+
+function parseSmsImportAction(message: string, referenceDate: Date): SmsImportAction | null {
   const normalized = message.replace(/\r/g, "");
-  if (!/매수체결/i.test(normalized)) return null;
+  const isBuy = /매수/i.test(normalized);
+  const isSell = /매도/i.test(normalized);
+  if (!isBuy && !isSell) return null;
 
   const typeMatch = normalized.match(/\b([CP])\b/i);
   const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
   const qtyMatch = normalized.match(/([0-9]+)\s*계약/i);
   const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
-
   if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
 
   const parsedStrike = Number(strikeMatch[1]);
   const parsedQty = Number(qtyMatch[1]);
   const parsedPrice = Number(priceMatch[1]);
-
   if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
 
-  const inferredUnderlying = inferUnderlyingFromText(normalized);
+  const underlying = inferUnderlyingFromText(normalized, referenceDate);
+  const type: PositionType = typeMatch[1].toUpperCase() === "P" ? "Put" : "Call";
+  const strike = Math.max(0, Math.round(parsedStrike));
+  const qty = Math.max(1, Math.round(parsedQty));
+  const price = Math.max(0, parsedPrice);
+
+  if (isBuy) {
+    return {
+      mode: "buy",
+      trade: {
+        underlying,
+        type,
+        strike: String(strike),
+        qty: String(qty),
+        price: price.toFixed(2),
+      },
+    };
+  }
 
   return {
-    underlying: inferredUnderlying ?? getDefaultUnderlying(new Date()),
-    type: typeMatch[1].toUpperCase() === "P" ? "Put" : "Call",
-    strike: String(Math.max(0, Math.round(parsedStrike))),
-    qty: String(Math.max(1, Math.round(parsedQty))),
-    price: Math.max(0, parsedPrice).toFixed(2),
+    mode: "sell",
+    underlying,
+    type,
+    strike,
+    qty,
+    price,
   };
 }
 
-function parseTradeFromUrl(): TradeFormState | null {
+function parseTradeFromUrl(): SmsImportAction | null {
   const params = new URLSearchParams(window.location.search);
+  const referenceDate = parseReferenceDateFromParams(params);
+
   const smsMessage = params.get("sms");
-  if (smsMessage) return parseTradeFromSmsText(smsMessage);
+  if (smsMessage) return parseSmsImportAction(smsMessage, referenceDate);
 
   const typeParam = params.get("type");
   const strikeParam = params.get("strike");
@@ -143,14 +193,33 @@ function parseTradeFromUrl(): TradeFormState | null {
   const underlying: UnderlyingType =
     underlyingParam === "Mon" || underlyingParam === "Thu" || underlyingParam === "Month"
       ? underlyingParam
-      : getDefaultUnderlying(new Date());
+      : getDefaultUnderlying(referenceDate);
+
+  const side = params.get("side");
+  const strike = Math.max(0, Math.round(parsedStrike));
+  const qty = Math.max(1, Math.round(parsedQty));
+  const price = Math.max(0, parsedPrice);
+
+  if (side && /sell|매도/i.test(side)) {
+    return {
+      mode: "sell",
+      underlying,
+      type,
+      strike,
+      qty,
+      price,
+    };
+  }
 
   return {
-    underlying,
-    type,
-    strike: String(Math.max(0, Math.round(parsedStrike))),
-    qty: String(Math.max(1, Math.round(parsedQty))),
-    price: Math.max(0, parsedPrice).toFixed(2),
+    mode: "buy",
+    trade: {
+      underlying,
+      type,
+      strike: String(strike),
+      qty: String(qty),
+      price: price.toFixed(2),
+    },
   };
 }
 function parsePriceCents(value: string): number {
@@ -316,12 +385,29 @@ export function App(): JSX.Element {
   );
 
   useEffect(() => {
-    const importedTrade = parseTradeFromUrl();
-    if (!importedTrade) return;
+    const importAction = parseTradeFromUrl();
+    if (!importAction) return;
 
-    setTradeForm(importedTrade);
-    setTradeOpen(true);
-    window.setTimeout(() => strikeInputRef.current?.focus(), 0);
+    if (importAction.mode === "buy") {
+      setTradeForm(importAction.trade);
+      setTradeOpen(true);
+      window.setTimeout(() => strikeInputRef.current?.focus(), 0);
+    } else {
+      const target = state.openPositions.find(
+        (position) =>
+          position.underlying === importAction.underlying &&
+          position.type === importAction.type &&
+          position.strike === importAction.strike,
+      );
+
+      if (target) {
+        setSelectedPositionId(target.id);
+        setPositionActionForm({
+          price: importAction.price.toFixed(2),
+          qty: String(Math.min(target.qty, importAction.qty)),
+        });
+      }
+    }
 
     const params = new URLSearchParams(window.location.search);
     params.delete("sms");
@@ -330,10 +416,12 @@ export function App(): JSX.Element {
     params.delete("qty");
     params.delete("price");
     params.delete("underlying");
+    params.delete("side");
+    params.delete("sentAt");
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
-  }, []);
+  }, [state.openPositions]);
 
   function openTradeSheet(): void {
     setTradeForm(createTradeDefaults());
@@ -746,6 +834,8 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
+
 
 
 

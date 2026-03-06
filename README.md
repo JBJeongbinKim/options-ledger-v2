@@ -59,3 +59,15 @@ Alternative direct params format:
 ```text
 https://<your-vercel-url>/?type=Call&underlying=Mon&strike=350&qty=1&price=0.88
 ```
+
+Side rules:
+- `매수` => opens New Trade prefilled.
+- `매도` => opens Position Action prefilled (qty/price) for matching open position.
+
+Underlying rules for SMS parsing:
+- if message contains `코스피200` => `Month`
+- if message contains `코스피위클리` =>
+  - `Mon` when sent after 5am Thu, or on Fri/Sat/Sun, or before 5am Mon
+  - otherwise `Thu`
+
+Pass `sentAt=<ISO datetime>` in URL for deterministic time-window parsing.

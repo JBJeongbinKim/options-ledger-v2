@@ -94,7 +94,7 @@ describe("App dashboard", () => {
       "0.88P",
     ].join("\n");
 
-    window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}`);
+    window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}&sentAt=2026-03-06T12:00:00.000Z`);
     render(<App />);
 
     expect(screen.getByLabelText("Strike")).toHaveValue("350");
@@ -105,6 +105,39 @@ describe("App dashboard", () => {
 
     await user.click(screen.getByRole("button", { name: "Save Trade" }));
     expect(screen.getByRole("button", { name: /Mon Call 350/ })).toBeInTheDocument();
+    expect(window.location.search).toBe("");
+  });
+  test("opens position action prefilled from sell sms query", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const firstView = render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "New Trade" }));
+    await user.click(screen.getByRole("button", { name: "Thu" }));
+    await user.clear(screen.getByLabelText("Strike"));
+    await user.type(screen.getByLabelText("Strike"), "350");
+    await user.clear(screen.getByLabelText("Qty"));
+    await user.type(screen.getByLabelText("Qty"), "2");
+    await user.clear(screen.getByLabelText("Price"));
+    await user.type(screen.getByLabelText("Price"), "100");
+    await user.click(screen.getByRole("button", { name: "Save Trade" }));
+
+    firstView.unmount();
+
+    const sms = [
+      "[Web발신]",
+      "매도체결",
+      "코스피위클리 C 350",
+      "1계약",
+      "0.88P",
+    ].join("\n");
+
+    window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}&sentAt=2026-03-10T12:00:00.000Z`);
+    render(<App />);
+
+    expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
+    expect(screen.getByLabelText("Qty")).toHaveValue("1");
+    expect(screen.getByLabelText("Price")).toHaveValue("0.88");
     expect(window.location.search).toBe("");
   });
   test("kospi input uses integer entry and keeps latest value", async () => {
@@ -153,4 +186,5 @@ describe("App dashboard", () => {
     });
   });
 });
+
 
