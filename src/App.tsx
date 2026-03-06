@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
 import {
   addTrade,
   applyKospiIntrinsicAll,
@@ -42,6 +42,10 @@ function valueColor(value: number, tone: Tone): string {
   return "neutral";
 }
 
+function positionTypeColor(type: PositionType): string {
+  return type === "Put" ? "put-color" : "call-color";
+}
+
 function MetricRow(props: {
   label: string;
   points: number;
@@ -64,11 +68,11 @@ function MetricRow(props: {
   );
 }
 
-function createTradeDefaults(state: LedgerState): TradeFormState {
+function createTradeDefaults(): TradeFormState {
   return {
     underlying: getDefaultUnderlying(new Date()),
     type: "Call",
-    strike: String(state.openPositions[0]?.strike ?? 0),
+    strike: "",
     qty: "1",
     price: "0.00",
   };
@@ -134,7 +138,10 @@ function ToggleGroup<T extends string>(props: {
   return (
     <div className="form-row">
       <span className="form-label">{props.label}</span>
-      <div className="toggle-group">
+      <div
+        className="toggle-group"
+        style={{ gridTemplateColumns: `repeat(${props.options.length}, minmax(0, 1fr))` }}
+      >
         {props.options.map((option) => (
           <button
             key={option}
@@ -157,7 +164,9 @@ function NumberField(props: {
   step: number;
   min: number;
   integer?: boolean;
+  showHint?: boolean;
   digitShift?: boolean;
+  inputRef?: RefObject<HTMLInputElement>;
 }): JSX.Element {
   const parsed = Number(props.value);
   const displayStep = props.integer ? String(props.step) : props.step.toFixed(2);
@@ -174,6 +183,12 @@ function NumberField(props: {
   }
 
   function onInputChange(nextRaw: string): void {
+    if (props.integer) {
+      const cleaned = nextRaw.replace(/[^0-9]/g, "");
+      props.onChange(cleaned ? String(Number(cleaned)) : "");
+      return;
+    }
+
     if (!props.digitShift) {
       props.onChange(nextRaw);
       return;
@@ -190,10 +205,11 @@ function NumberField(props: {
           -
         </button>
         <input
+          ref={props.inputRef}
           aria-label={props.label}
           className="number-input"
           value={props.value}
-          inputMode="decimal"
+          inputMode={props.integer ? "numeric" : "decimal"}
           onKeyDown={onKeyDown}
           onChange={(event) => onInputChange(event.target.value)}
         />
@@ -201,7 +217,7 @@ function NumberField(props: {
           +
         </button>
       </div>
-      <small className="hint">step {displayStep}</small>
+      {props.showHint === false ? null : <small className="hint">step {displayStep}</small>}
     </div>
   );
 }
@@ -209,17 +225,22 @@ function NumberField(props: {
 export function App(): JSX.Element {
   const [state, setState] = useState<LedgerState>(() => loadLedgerState());
   const [isTradeOpen, setTradeOpen] = useState(false);
-  const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults(loadLedgerState()));
+  const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults());
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
   const [kospiInput, setKospiInput] = useState<string>(() => {
     const latest = loadKospi200Value();
-    return latest === undefined ? "0.00" : latest.toFixed(2);
+    return latest === undefined ? "0" : String(Math.max(0, Math.round(latest)));
   });
   const [resetNavInput, setResetNavInput] = useState<string>(formatPoints(state.startingNavPoints));
   const [isBusy, setBusy] = useState(false);
   const [showNavKrw, setShowNavKrw] = useState(false);
+  const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const pendingReconcile = useRef(0);
+  const touchStartX = useRef<Record<string, number>>({});
+  const longPressTimers = useRef<Record<string, number>>({});
+  const suppressOpenIds = useRef<Record<string, boolean>>({});
+  const strikeInputRef = useRef<HTMLInputElement>(null);
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
   const selectedPosition = useMemo(
@@ -228,8 +249,9 @@ export function App(): JSX.Element {
   );
 
   function openTradeSheet(): void {
-    setTradeForm(createTradeDefaults(state));
+    setTradeForm(createTradeDefaults());
     setTradeOpen(true);
+    window.setTimeout(() => strikeInputRef.current?.focus(), 0);
   }
 
   function openPositionActions(position: OpenPosition): void {
@@ -263,6 +285,88 @@ export function App(): JSX.Element {
     beginReconcilePulse();
   }
 
+  function removePositionWithoutSettlement(positionId: string, askConfirm: boolean): void {
+    if (askConfirm && !window.confirm("Would you like to remove the transaction?")) {
+      setSwipeOffsets((current) => ({ ...current, [positionId]: 0 }));
+      return;
+    }
+
+    const nextState: LedgerState = {
+      ...state,
+      openPositions: state.openPositions.filter((position) => position.id !== positionId),
+    };
+    setSwipeOffsets((current) => ({ ...current, [positionId]: 0 }));
+    mutate(nextState, closePositionActions);
+  }
+
+  function clearLongPress(id: string): void {
+    const timerId = longPressTimers.current[id];
+    if (timerId !== undefined) {
+      window.clearTimeout(timerId);
+      delete longPressTimers.current[id];
+    }
+  }
+
+  function startLongPress(id: string): void {
+    clearLongPress(id);
+    longPressTimers.current[id] = window.setTimeout(() => {
+      suppressOpenIds.current[id] = true;
+      removePositionWithoutSettlement(id, false);
+    }, 650);
+  }
+
+  function setSwipeOffset(id: string, value: number): void {
+    setSwipeOffsets((current) => ({ ...current, [id]: Math.min(0, Math.max(-110, value)) }));
+  }
+
+  function onItemTouchStart(positionId: string, event: TouchEvent<HTMLButtonElement>): void {
+    touchStartX.current[positionId] = event.changedTouches[0]?.clientX ?? 0;
+    setSwipeOffset(positionId, 0);
+    startLongPress(positionId);
+  }
+
+  function onItemTouchMove(positionId: string, event: TouchEvent<HTMLButtonElement>): void {
+    const start = touchStartX.current[positionId];
+    if (start === undefined) return;
+
+    const currentX = event.changedTouches[0]?.clientX ?? start;
+    const delta = currentX - start;
+    if (Math.abs(delta) > 10) {
+      clearLongPress(positionId);
+    }
+
+    setSwipeOffset(positionId, delta < 0 ? delta : 0);
+  }
+
+  function onItemTouchEnd(positionId: string): void {
+    clearLongPress(positionId);
+    const offset = swipeOffsets[positionId] ?? 0;
+    if (offset <= -80) {
+      suppressOpenIds.current[positionId] = true;
+      removePositionWithoutSettlement(positionId, true);
+      return;
+    }
+
+    setSwipeOffset(positionId, 0);
+  }
+
+  function onItemMouseDown(positionId: string): void {
+    startLongPress(positionId);
+  }
+
+  function onItemMouseUp(positionId: string): void {
+    clearLongPress(positionId);
+  }
+
+  function handlePositionItemClick(position: OpenPosition): void {
+    if (suppressOpenIds.current[position.id]) {
+      delete suppressOpenIds.current[position.id];
+      return;
+    }
+
+    openPositionActions(position);
+  }
+
   function handleSaveTrade(): void {
     const strike = Math.max(0, Math.round(Number(tradeForm.strike) || 0));
     const qty = Math.max(1, Math.round(Number(tradeForm.qty) || 1));
@@ -294,9 +398,16 @@ export function App(): JSX.Element {
     mutate(nextState, closePositionActions);
   }
 
+  function bumpKospi(delta: number): void {
+    const current = Number(kospiInput);
+    const next = Math.max(0, (Number.isFinite(current) ? current : 0) + delta);
+    setKospiInput(String(Math.round(next)));
+  }
+
   function handleApplyKospiAll(): void {
-    const kospi = Number(kospiInput);
+    const kospi = Math.max(0, Math.round(Number(kospiInput)));
     if (!Number.isFinite(kospi)) return;
+    setKospiInput(String(kospi));
     saveKospi200Value(kospi);
     const nextState = applyKospiIntrinsicAll(state, kospi);
     mutate(nextState);
@@ -309,10 +420,12 @@ export function App(): JSX.Element {
     mutate(nextState, () => {
       setTradeOpen(false);
       setSelectedPositionId(null);
-      setKospiInput(loadKospi200Value()?.toFixed(2) ?? "0.00");
+      setKospiInput(String(Math.max(0, Math.round(loadKospi200Value() ?? 0))));
       setResetNavInput(formatPoints(navPoints));
     });
   }
+
+  const navPointsLabel = `${formatPoints(dashboard.cashPoints)} / ${formatPoints(dashboard.navPoints)} pt`;
 
   return (
     <main className="app-shell">
@@ -328,16 +441,14 @@ export function App(): JSX.Element {
           <div className="metric-label">NAV</div>
           <button
             type="button"
-            className={`metric-toggle ${valueColor(dashboard.navPoints, "balance")}`}
+            className={`metric-toggle metric-value ${valueColor(dashboard.navPoints, "balance")}`}
             onClick={() => setShowNavKrw((current) => !current)}
+            aria-label={showNavKrw ? formatKrwFromPoints(dashboard.navPoints) : navPointsLabel}
           >
-            {showNavKrw ? formatKrwFromPoints(dashboard.navPoints) : `${formatPoints(dashboard.navPoints)} pt`}
+            {showNavKrw ? formatKrwFromPoints(dashboard.navPoints) : navPointsLabel}
           </button>
-          <div className="metric-sub-hint">Tap value</div>
         </div>
 
-        <MetricRow label="Option Values" points={dashboard.marketValuePoints} tone="balance" showKrw={false} />
-        <MetricRow label="Cash" points={dashboard.cashPoints} tone="balance" showKrw={false} />
         <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed showKrw={false} />
         <MetricRow label="Realized P&L" points={dashboard.realizedTodayPoints} tone="profit" signed showKrw={false} />
       </section>
@@ -345,9 +456,9 @@ export function App(): JSX.Element {
       <section className="card">
         <div className="card-topline card-topline-open">
           <h2>Open Positions</h2>
-          <button type="button" className="primary-btn new-trade-btn" onClick={openTradeSheet}>
-            New Trade
-          </button>
+          <span className={`position-value-chip ${valueColor(dashboard.marketValuePoints, "balance")}`}>
+            {formatPoints(dashboard.marketValuePoints)} pt
+          </span>
         </div>
 
         {state.openPositions.length === 0 ? (
@@ -362,23 +473,35 @@ export function App(): JSX.Element {
                   key={position.id}
                   type="button"
                   className="position-item"
-                  onClick={() => openPositionActions(position)}
+                  style={{ transform: `translateX(${swipeOffsets[position.id] ?? 0}px)` }}
+                  onTouchStart={(event) => onItemTouchStart(position.id, event)}
+                  onTouchMove={(event) => onItemTouchMove(position.id, event)}
+                  onTouchEnd={() => onItemTouchEnd(position.id)}
+                  onTouchCancel={() => onItemTouchEnd(position.id)}
+                  onMouseDown={() => onItemMouseDown(position.id)}
+                  onMouseUp={() => onItemMouseUp(position.id)}
+                  onMouseLeave={() => onItemMouseUp(position.id)}
+                  onClick={() => handlePositionItemClick(position)}
                 >
                   <div className="position-row">
                     <span className="position-line-main">
-                      {position.underlying} {position.type} {position.strike}
+                      {position.underlying} <span className={positionTypeColor(position.type)}>{position.type}</span> {position.strike}
                     </span>
                     <span className="position-line-sub">Qty {position.qty} | Avg {formatPoints(position.entryPrice)}</span>
                   </div>
                   <div className="position-row">
                     <span className={`position-line-pnl ${valueColor(pnlPoints, "profit")}`}>{formatSignedPoints(pnlPoints)} pt</span>
-                    <span className="position-line-sub">Mkt {formatPoints(position.currentPrice * position.qty)}</span>
+                    <span className="position-line-sub">Value {formatPoints(position.currentPrice * position.qty)} pt</span>
                   </div>
                 </button>
               );
             })}
           </div>
         )}
+
+        <button type="button" className="primary-btn new-trade-footer-btn" onClick={openTradeSheet}>
+          New Trade
+        </button>
       </section>
 
       <section className="card">
@@ -386,14 +509,24 @@ export function App(): JSX.Element {
           <h2>KOSPI200</h2>
         </div>
         <div className="kospi-row">
-          <input
-            aria-label="KOSPI200"
-            className="number-input"
-            value={kospiInput}
-            inputMode="decimal"
-            onKeyDown={(event) => handleDigitShiftKeyDown(event, kospiInput, setKospiInput)}
-            onChange={(event) => setKospiInput(applyDigitShiftInput(event.target.value))}
-          />
+          <div className="step-field">
+            <button type="button" className="step-btn" onClick={() => bumpKospi(-5)}>
+              -
+            </button>
+            <input
+              aria-label="KOSPI200"
+              className="number-input"
+              value={kospiInput}
+              inputMode="numeric"
+              onChange={(event) => {
+                const cleaned = event.target.value.replace(/[^0-9]/g, "");
+                setKospiInput(cleaned ? String(Number(cleaned)) : "");
+              }}
+            />
+            <button type="button" className="step-btn" onClick={() => bumpKospi(5)}>
+              +
+            </button>
+          </div>
           <button type="button" className="primary-btn" onClick={handleApplyKospiAll}>
             Apply All
           </button>
@@ -442,6 +575,7 @@ export function App(): JSX.Element {
             <NumberField
               label="Strike"
               value={tradeForm.strike}
+              inputRef={strikeInputRef}
               integer
               step={1}
               min={0}
@@ -463,6 +597,7 @@ export function App(): JSX.Element {
               step={0.05}
               min={0}
               digitShift
+              showHint={false}
               onChange={(value) => setTradeForm((current) => ({ ...current, price: value }))}
             />
 
@@ -481,38 +616,41 @@ export function App(): JSX.Element {
       {selectedPosition ? (
         <section className="sheet-overlay" aria-label="Position Action Modal">
           <div className="sheet">
-            <h2>Position Action</h2>
-            <p className="sheet-subtitle">
-              {selectedPosition.underlying} {selectedPosition.type} {selectedPosition.strike}
-            </p>
+            <div className="sheet-header">
+              <h2>
+                {selectedPosition.underlying} {selectedPosition.type} {selectedPosition.strike}
+              </h2>
+              <button type="button" className="icon-btn" aria-label="Close" onClick={closePositionActions}>
+                x
+              </button>
+            </div>
 
             <NumberField
-              label="Action Price"
+              label="Price"
               value={positionActionForm.price}
               step={0.05}
               min={0}
               digitShift
+              showHint={false}
               onChange={(value) => setPositionActionForm((current) => ({ ...current, price: value }))}
             />
 
             <NumberField
-              label="Action Qty"
+              label="Qty"
               value={positionActionForm.qty}
               integer
               step={1}
               min={1}
+              showHint={false}
               onChange={(value) => setPositionActionForm((current) => ({ ...current, qty: value }))}
             />
 
-            <div className="sheet-actions sheet-actions-3">
-              <button type="button" className="ghost-btn" onClick={closePositionActions}>
-                Cancel
+            <div className="sheet-actions">
+              <button type="button" className="danger-btn" onClick={handleClosePosition}>
+                Close
               </button>
               <button type="button" className="primary-btn" onClick={handleUpdatePosition}>
                 Update
-              </button>
-              <button type="button" className="danger-btn" onClick={handleClosePosition}>
-                Close
               </button>
             </div>
           </div>
@@ -521,3 +659,4 @@ export function App(): JSX.Element {
     </main>
   );
 }
+

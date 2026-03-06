@@ -19,10 +19,10 @@ describe("App dashboard", () => {
     window.localStorage.clear();
     render(<App />);
 
-    expect(screen.getByText("Option Values")).toBeInTheDocument();
+    expect(screen.getByText("Unrealized P&L")).toBeInTheDocument();
     expect(screen.getByText("Realized P&L")).toBeInTheDocument();
-    expect(screen.queryByText("Realized Week")).not.toBeInTheDocument();
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cash")).not.toBeInTheDocument();
+    expect(screen.queryByText("Option Values")).not.toBeInTheDocument();
   });
 
   test("nav value toggles points and KRW on tap", async () => {
@@ -30,7 +30,7 @@ describe("App dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const navButton = screen.getByRole("button", { name: "17.00 pt" });
+    const navButton = screen.getByRole("button", { name: "17.00 / 17.00 pt" });
     await user.click(navButton);
     expect(screen.getByRole("button", { name: "\u20A94,250,000" })).toBeInTheDocument();
   });
@@ -43,7 +43,7 @@ describe("App dashboard", () => {
     await addBaseTrade(user, "1");
     await addBaseTrade(user, "2");
 
-    expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thu Call 350/ })).toBeInTheDocument();
     expect(screen.getByText(/Qty 3/)).toBeInTheDocument();
   });
 
@@ -53,18 +53,37 @@ describe("App dashboard", () => {
     render(<App />);
 
     await addBaseTrade(user);
-    await user.click(screen.getByText("Thu Call 350"));
+    await user.click(screen.getByRole("button", { name: /Thu Call 350/ }));
 
-    const priceInput = screen.getByLabelText("Action Price");
+    const priceInput = screen.getByLabelText("Price");
     await user.clear(priceInput);
     await user.type(priceInput, "175");
     await user.click(screen.getByRole("button", { name: "Update" }));
 
-    expect(screen.getByText(/Mkt 1.75/)).toBeInTheDocument();
+    expect(screen.getByText(/Value 1.75/)).toBeInTheDocument();
     expect(screen.getAllByText("+0.50 pt").length).toBeGreaterThan(0);
   });
 
-  test("kospi input uses shifted-decimal entry and keeps latest value", async () => {
+  test("can add a put option from new trade form", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "New Trade" }));
+    await user.click(screen.getByRole("button", { name: "Put" }));
+    await user.click(screen.getByRole("button", { name: "Thu" }));
+    await user.clear(screen.getByLabelText("Strike"));
+    await user.type(screen.getByLabelText("Strike"), "330");
+    await user.clear(screen.getByLabelText("Qty"));
+    await user.type(screen.getByLabelText("Qty"), "1");
+    await user.clear(screen.getByLabelText("Price"));
+    await user.type(screen.getByLabelText("Price"), "100");
+    await user.click(screen.getByRole("button", { name: "Save Trade" }));
+
+    expect(screen.getByRole("button", { name: /Thu Put 330/ })).toBeInTheDocument();
+  });
+
+  test("kospi input uses integer entry and keeps latest value", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
     const view = render(<App />);
@@ -73,11 +92,11 @@ describe("App dashboard", () => {
     await user.type(screen.getByLabelText("KOSPI200"), "36025");
     await user.click(screen.getByRole("button", { name: "Apply All" }));
 
-    expect(screen.getByLabelText("KOSPI200")).toHaveValue("360.25");
+    expect(screen.getByLabelText("KOSPI200")).toHaveValue("36025");
 
     view.unmount();
     render(<App />);
-    expect(screen.getByLabelText("KOSPI200")).toHaveValue("360.25");
+    expect(screen.getByLabelText("KOSPI200")).toHaveValue("36025");
   });
 
   test("hard reset clears ledger and sets NAV/Cash to entered points", async () => {
@@ -86,7 +105,7 @@ describe("App dashboard", () => {
     render(<App />);
 
     await addBaseTrade(user);
-    expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thu Call 350/ })).toBeInTheDocument();
 
     await user.click(screen.getByText("Reset"));
     await user.clear(screen.getByLabelText("Hard Reset NAV"));
@@ -94,7 +113,7 @@ describe("App dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Hard Reset Ledger" }));
 
     expect(screen.getByText("No open positions yet.")).toBeInTheDocument();
-    expect(screen.getAllByText("20.00 pt").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "20.00 / 20.00 pt" })).toBeInTheDocument();
   });
 
   test("shows processing indicator during mutation reconcile", async () => {
@@ -110,4 +129,3 @@ describe("App dashboard", () => {
     });
   });
 });
-
