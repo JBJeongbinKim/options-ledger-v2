@@ -372,6 +372,7 @@ export function App(): JSX.Element {
   const [isBusy, setBusy] = useState(false);
   const [showNavKrw, setShowNavKrw] = useState(false);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+  const [pendingImportAction, setPendingImportAction] = useState<SmsImportAction | null>(null);
   const pendingReconcile = useRef(0);
   const touchStartX = useRef<Record<string, number>>({});
   const longPressTimers = useRef<Record<string, number>>({});
@@ -388,26 +389,7 @@ export function App(): JSX.Element {
     const importAction = parseTradeFromUrl();
     if (!importAction) return;
 
-    if (importAction.mode === "buy") {
-      setTradeForm(importAction.trade);
-      setTradeOpen(true);
-      window.setTimeout(() => strikeInputRef.current?.focus(), 0);
-    } else {
-      const target = state.openPositions.find(
-        (position) =>
-          position.underlying === importAction.underlying &&
-          position.type === importAction.type &&
-          position.strike === importAction.strike,
-      );
-
-      if (target) {
-        setSelectedPositionId(target.id);
-        setPositionActionForm({
-          price: importAction.price.toFixed(2),
-          qty: String(Math.min(target.qty, importAction.qty)),
-        });
-      }
-    }
+    setPendingImportAction(importAction);
 
     const params = new URLSearchParams(window.location.search);
     params.delete("sms");
@@ -421,8 +403,38 @@ export function App(): JSX.Element {
     const nextQuery = params.toString();
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
-  }, [state.openPositions]);
+  }, []);
 
+  function reviewParsedImport(): void {
+    if (!pendingImportAction) return;
+
+    if (pendingImportAction.mode === "buy") {
+      setTradeForm(pendingImportAction.trade);
+      setTradeOpen(true);
+      window.setTimeout(() => strikeInputRef.current?.focus(), 0);
+      setPendingImportAction(null);
+      return;
+    }
+
+    const target = state.openPositions.find(
+      (position) =>
+        position.underlying === pendingImportAction.underlying &&
+        position.type === pendingImportAction.type &&
+        position.strike === pendingImportAction.strike,
+    );
+
+    if (!target) {
+      window.alert("No matching open position found for the parsed sell transaction.");
+      return;
+    }
+
+    setSelectedPositionId(target.id);
+    setPositionActionForm({
+      price: pendingImportAction.price.toFixed(2),
+      qty: String(Math.min(target.qty, pendingImportAction.qty)),
+    });
+    setPendingImportAction(null);
+  }
   function openTradeSheet(): void {
     setTradeForm(createTradeDefaults());
     setTradeOpen(true);
@@ -604,6 +616,24 @@ export function App(): JSX.Element {
 
   return (
     <main className="app-shell">
+      {pendingImportAction ? (
+        <section className="card">
+          <div className="card-topline">
+            <h2>Parsed Transaction</h2>
+          </div>
+          <p className="empty-state">
+            Parsed {pendingImportAction.mode === "buy" ? "buy" : "sell"} transaction is ready for review.
+          </p>
+          <div className="sheet-actions">
+            <button type="button" className="ghost-btn" onClick={() => setPendingImportAction(null)}>
+              Dismiss Import
+            </button>
+            <button type="button" className="primary-btn" onClick={reviewParsedImport}>
+              Review Parsed
+            </button>
+          </div>
+        </section>
+      ) : null}
       {isBusy ? (
         <div className="busy-indicator" role="status" aria-live="polite">
           <span className="busy-dot" />
@@ -834,6 +864,11 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
+
+
+
+
 
 
 

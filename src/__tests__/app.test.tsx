@@ -97,6 +97,9 @@ describe("App dashboard", () => {
     window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}&sentAt=2026-03-06T12:00:00.000Z`);
     render(<App />);
 
+    expect(screen.getByText("Parsed Transaction")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Review Parsed" }));
+
     expect(screen.getByLabelText("Strike")).toHaveValue("350");
     expect(screen.getByLabelText("Qty")).toHaveValue("2");
     expect(screen.getByLabelText("Price")).toHaveValue("0.88");
@@ -134,6 +137,9 @@ describe("App dashboard", () => {
 
     window.history.replaceState({}, "", `/?sms=${encodeURIComponent(sms)}&sentAt=2026-03-10T12:00:00.000Z`);
     render(<App />);
+
+    expect(screen.getByText("Parsed Transaction")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Review Parsed" }));
 
     expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
     expect(screen.getByLabelText("Qty")).toHaveValue("1");
@@ -186,5 +192,7 @@ describe("App dashboard", () => {
     });
   });
 });
+
+
 
 
