@@ -2,8 +2,11 @@ import { useMemo, useState } from "react";
 import {
   addTrade,
   buildDashboard,
+  closePosition,
   getDefaultUnderlying,
+  updatePositionPrice,
   type LedgerState,
+  type OpenPosition,
   type PositionType,
   type UnderlyingType,
 } from "./domain/ledger";
@@ -18,6 +21,11 @@ interface TradeFormState {
   strike: string;
   qty: string;
   price: string;
+}
+
+interface PositionActionFormState {
+  price: string;
+  qty: string;
 }
 
 function valueColor(value: number, tone: Tone): string {
@@ -44,6 +52,13 @@ function createTradeDefaults(state: LedgerState): TradeFormState {
     strike: String(state.openPositions[0]?.strike ?? 0),
     qty: "1",
     price: "0.00",
+  };
+}
+
+function createPositionActionDefaults(position: OpenPosition): PositionActionFormState {
+  return {
+    price: formatPoints(position.currentPrice),
+    qty: String(position.qty),
   };
 }
 
@@ -116,12 +131,32 @@ export function App(): JSX.Element {
   const [state, setState] = useState<LedgerState>(() => loadLedgerState());
   const [isTradeOpen, setTradeOpen] = useState(false);
   const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults(loadLedgerState()));
+  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
+  const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
+  const selectedPosition = useMemo(
+    () => state.openPositions.find((position) => position.id === selectedPositionId) ?? null,
+    [state.openPositions, selectedPositionId],
+  );
 
   function openTradeSheet(): void {
     setTradeForm(createTradeDefaults(state));
     setTradeOpen(true);
+  }
+
+  function openPositionActions(position: OpenPosition): void {
+    setSelectedPositionId(position.id);
+    setPositionActionForm(createPositionActionDefaults(position));
+  }
+
+  function closePositionActions(): void {
+    setSelectedPositionId(null);
+  }
+
+  function commit(nextState: LedgerState): void {
+    saveLedgerState(nextState);
+    setState(nextState);
   }
 
   function handleSaveTrade(): void {
@@ -137,9 +172,25 @@ export function App(): JSX.Element {
       price,
     });
 
-    saveLedgerState(nextState);
-    setState(nextState);
+    commit(nextState);
     setTradeOpen(false);
+  }
+
+  function handleUpdatePosition(): void {
+    if (!selectedPosition) return;
+    const price = Math.max(0, Number(positionActionForm.price) || 0);
+    const nextState = updatePositionPrice(state, selectedPosition.id, price);
+    commit(nextState);
+    closePositionActions();
+  }
+
+  function handleClosePosition(): void {
+    if (!selectedPosition) return;
+    const price = Math.max(0, Number(positionActionForm.price) || 0);
+    const qty = Math.max(1, Math.round(Number(positionActionForm.qty) || selectedPosition.qty));
+    const nextState = closePosition(state, selectedPosition.id, qty, price);
+    commit(nextState);
+    closePositionActions();
   }
 
   return (
@@ -171,7 +222,12 @@ export function App(): JSX.Element {
         ) : (
           <div className="positions-list">
             {state.openPositions.map((position) => (
-              <button key={position.id} type="button" className="position-item">
+              <button
+                key={position.id}
+                type="button"
+                className="position-item"
+                onClick={() => openPositionActions(position)}
+              >
                 <span>
                   {position.underlying} {position.type} {position.strike}
                 </span>
@@ -235,6 +291,46 @@ export function App(): JSX.Element {
               </button>
               <button type="button" className="primary-btn" onClick={handleSaveTrade}>
                 Save Trade
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {selectedPosition ? (
+        <section className="sheet-overlay" aria-label="Position Action Modal">
+          <div className="sheet">
+            <h2>Position Action</h2>
+            <p className="sheet-subtitle">
+              {selectedPosition.underlying} {selectedPosition.type} {selectedPosition.strike}
+            </p>
+
+            <NumberField
+              label="Action Price"
+              value={positionActionForm.price}
+              step={0.05}
+              min={0}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, price: value }))}
+            />
+
+            <NumberField
+              label="Action Qty"
+              value={positionActionForm.qty}
+              integer
+              step={1}
+              min={1}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, qty: value }))}
+            />
+
+            <div className="sheet-actions sheet-actions-3">
+              <button type="button" className="ghost-btn" onClick={closePositionActions}>
+                Cancel
+              </button>
+              <button type="button" className="primary-btn" onClick={handleUpdatePosition}>
+                Update
+              </button>
+              <button type="button" className="danger-btn" onClick={handleClosePosition}>
+                Close
               </button>
             </div>
           </div>

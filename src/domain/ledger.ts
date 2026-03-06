@@ -81,6 +81,69 @@ export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = n
   };
 }
 
+export function updatePositionPrice(
+  state: LedgerState,
+  positionId: string,
+  newPrice: number,
+  now: Date = new Date(),
+): LedgerState {
+  const normalized = Math.max(0, newPrice);
+  return {
+    ...state,
+    openPositions: sortOpenPositions(
+      state.openPositions.map((position) =>
+        position.id === positionId
+          ? {
+              ...position,
+              currentPrice: normalized,
+              updatedAt: now.toISOString(),
+            }
+          : position,
+      ),
+    ),
+  };
+}
+
+export function closePosition(
+  state: LedgerState,
+  positionId: string,
+  closeQty: number,
+  closePrice: number,
+  now: Date = new Date(),
+): LedgerState {
+  const qty = Math.max(1, Math.floor(closeQty));
+  const price = Math.max(0, closePrice);
+  const target = state.openPositions.find((position) => position.id === positionId);
+  if (!target) return state;
+
+  const executedQty = Math.min(qty, target.qty);
+  const realizedPoints = (price - target.entryPrice) * executedQty;
+
+  const updatedPositions = state.openPositions
+    .map((position) => {
+      if (position.id !== positionId) return position;
+
+      const remainingQty = position.qty - executedQty;
+      if (remainingQty <= 0) return null;
+
+      return {
+        ...position,
+        qty: remainingQty,
+        currentPrice: price,
+        updatedAt: now.toISOString(),
+      };
+    })
+    .filter((position): position is OpenPosition => position !== null);
+
+  return {
+    ...state,
+    cashPoints: state.cashPoints + price * executedQty,
+    realizedTodayPoints: state.realizedTodayPoints + realizedPoints,
+    realizedWeekPoints: state.realizedWeekPoints + realizedPoints,
+    openPositions: sortOpenPositions(updatedPositions),
+  };
+}
+
 export function getDefaultUnderlying(now: Date): UnderlyingType {
   const day = now.getDay();
   const hour = now.getHours();

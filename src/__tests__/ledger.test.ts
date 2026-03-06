@@ -1,8 +1,10 @@
 import {
   addTrade,
   buildDashboard,
+  closePosition,
   createInitialLedgerState,
   getDefaultUnderlying,
+  updatePositionPrice,
 } from "../domain/ledger";
 import { formatKrwFromPoints, formatPoints } from "../domain/format";
 
@@ -44,6 +46,39 @@ describe("ledger domain", () => {
     expect(next.cashPoints).toBe(15.75);
     expect(dashboard.unrealizedPoints).toBe(0);
     expect(dashboard.navPoints).toBe(17);
+  });
+
+  test("update position changes current price and unrealized", () => {
+    const base = addTrade(createInitialLedgerState(), {
+      underlying: "Thu",
+      type: "Call",
+      strike: 350,
+      qty: 1,
+      price: 1,
+    });
+    const positionId = base.openPositions[0].id;
+    const next = updatePositionPrice(base, positionId, 1.5, new Date("2026-03-05T12:00:00.000Z"));
+    const dashboard = buildDashboard(next);
+
+    expect(next.openPositions[0].currentPrice).toBe(1.5);
+    expect(dashboard.unrealizedPoints).toBe(0.5);
+  });
+
+  test("partial close updates cash, qty and realized", () => {
+    const base = addTrade(createInitialLedgerState(), {
+      underlying: "Thu",
+      type: "Call",
+      strike: 350,
+      qty: 2,
+      price: 1,
+    });
+    const positionId = base.openPositions[0].id;
+    const next = closePosition(base, positionId, 1, 1.5, new Date("2026-03-05T12:00:00.000Z"));
+
+    expect(next.cashPoints).toBe(16.5);
+    expect(next.openPositions[0].qty).toBe(1);
+    expect(next.realizedTodayPoints).toBe(0.5);
+    expect(next.realizedWeekPoints).toBe(0.5);
   });
 
   test("default underlying follows Thu 3 AM to Mon 3 AM rule", () => {
