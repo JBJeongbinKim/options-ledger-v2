@@ -6,3 +6,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+*.tsbuildinfo
+src/**/*.js
+vite.config.js
+vitest.setup.js
