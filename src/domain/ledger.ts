@@ -181,6 +181,42 @@ export function updatePositionPrice(
   };
 }
 
+
+export interface UpdatePositionInput {
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: number;
+  currentPrice: number;
+}
+
+export function updateOpenPosition(
+  state: LedgerState,
+  positionId: string,
+  updates: UpdatePositionInput,
+  now: Date = new Date(),
+): LedgerState {
+  const normalizedStrike = Math.max(0, Math.round(updates.strike));
+  const normalizedPrice = Math.max(0, updates.currentPrice);
+
+  const nextOpenPositions = state.openPositions.map((position) =>
+    position.id === positionId
+      ? {
+          ...position,
+          underlying: updates.underlying,
+          type: updates.type,
+          strike: normalizedStrike,
+          currentPrice: normalizedPrice,
+          updatedAt: now.toISOString(),
+        }
+      : position,
+  );
+
+  return {
+    ...state,
+    openPositions: normalizeOpenPositions(nextOpenPositions),
+  };
+}
+
 export function closePosition(
   state: LedgerState,
   positionId: string,

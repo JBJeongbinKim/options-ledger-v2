@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject, type TouchEvent } from "react";
 import {
   addTrade,
   applyKospiIntrinsicAll,
@@ -6,7 +6,7 @@ import {
   closePosition,
   createInitialLedgerState,
   getDefaultUnderlying,
-  updatePositionPrice,
+  updateOpenPosition,
   type LedgerState,
   type OpenPosition,
   type PositionType,
@@ -32,6 +32,9 @@ interface TradeFormState {
 }
 
 interface PositionActionFormState {
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: string;
   price: string;
   qty: string;
 }
@@ -80,11 +83,192 @@ function createTradeDefaults(): TradeFormState {
 
 function createPositionActionDefaults(position: OpenPosition): PositionActionFormState {
   return {
+    underlying: position.underlying,
+    type: position.type,
+    strike: String(position.strike),
     price: formatPoints(position.currentPrice),
     qty: String(position.qty),
   };
 }
 
+
+function resolveWeeklyUnderlyingByTime(referenceDate: Date): UnderlyingType {
+  const day = referenceDate.getDay();
+  const hour = referenceDate.getHours();
+  const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
+  return inMonWindow ? "Mon" : "Thu";
+}
+
+function parseReferenceDateFromParams(params: URLSearchParams): Date {
+  const sentAt = params.get("sentAt");
+  if (!sentAt) return new Date();
+
+  const parsed = new Date(sentAt);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function inferUnderlyingFromText(message: string, referenceDate: Date): UnderlyingType {
+  if (/\uCF54\uC2A4\uD53C200/i.test(message)) return "Month";
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return resolveWeeklyUnderlyingByTime(referenceDate);
+  return getDefaultUnderlying(referenceDate);
+}
+
+interface SmsImportActionBuy {
+  mode: "buy";
+  trade: TradeFormState;
+}
+
+interface SmsImportActionSell {
+  mode: "sell";
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: number;
+  qty: number;
+  price: number;
+}
+
+type SmsImportAction = SmsImportActionBuy | SmsImportActionSell;
+
+
+interface PendingImportFormState {
+  mode: "buy" | "sell";
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: string;
+  qty: string;
+  price: string;
+}
+
+interface PendingServerImport {
+  id: string;
+  mode: "buy" | "sell";
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: number;
+  qty: number;
+  price: number;
+}
+
+function toPendingImportForm(action: SmsImportAction): PendingImportFormState {
+  if (action.mode === "buy") {
+    return {
+      mode: "buy",
+      underlying: action.trade.underlying,
+      type: action.trade.type,
+      strike: action.trade.strike,
+      qty: action.trade.qty,
+      price: action.trade.price,
+    };
+  }
+
+  return {
+    mode: "sell",
+    underlying: action.underlying,
+    type: action.type,
+    strike: String(action.strike),
+    qty: String(action.qty),
+    price: action.price.toFixed(2),
+  };
+}
+function parseSmsImportAction(message: string, referenceDate: Date): SmsImportAction | null {
+  const normalized = message.replace(/\r/g, "");
+  const isBuy = /\uB9E4\uC218/i.test(normalized);
+  const isSell = /\uB9E4\uB3C4/i.test(normalized);
+  if (!isBuy && !isSell) return null;
+
+  const typeMatch = normalized.match(/\b([CP])\b/i);
+  const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
+  const qtyMatch = normalized.match(/([0-9,]+)\s*\uACC4\uC57D/i);
+  const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
+  if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
+
+  const parsedStrike = Number(strikeMatch[1]);
+  const parsedQty = Number(qtyMatch[1].replace(/,/g, ""));
+  const parsedPrice = Number(priceMatch[1]);
+  if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
+
+  const underlying = inferUnderlyingFromText(normalized, referenceDate);
+  const type: PositionType = typeMatch[1].toUpperCase() === "P" ? "Put" : "Call";
+  const strike = Math.max(0, Math.round(parsedStrike));
+  const qty = Math.max(1, Math.round(parsedQty));
+  const price = Math.max(0, parsedPrice);
+
+  if (isBuy) {
+    return {
+      mode: "buy",
+      trade: {
+        underlying,
+        type,
+        strike: String(strike),
+        qty: String(qty),
+        price: price.toFixed(2),
+      },
+    };
+  }
+
+  return {
+    mode: "sell",
+    underlying,
+    type,
+    strike,
+    qty,
+    price,
+  };
+}
+
+function parseTradeFromUrl(): SmsImportAction | null {
+  const params = new URLSearchParams(window.location.search);
+  const referenceDate = parseReferenceDateFromParams(params);
+
+  const smsMessage = params.get("sms");
+  if (smsMessage) return parseSmsImportAction(smsMessage, referenceDate);
+
+  const typeParam = params.get("type");
+  const strikeParam = params.get("strike");
+  const qtyParam = params.get("qty");
+  const priceParam = params.get("price");
+
+  if (!typeParam || !strikeParam || !qtyParam || !priceParam) return null;
+
+  const parsedStrike = Number(strikeParam);
+  const parsedQty = Number(qtyParam);
+  const parsedPrice = Number(priceParam);
+  if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
+
+  const type: PositionType = /put|p/i.test(typeParam) ? "Put" : "Call";
+  const underlyingParam = params.get("underlying");
+  const underlying: UnderlyingType =
+    underlyingParam === "Mon" || underlyingParam === "Thu" || underlyingParam === "Month"
+      ? underlyingParam
+      : getDefaultUnderlying(referenceDate);
+
+  const side = params.get("side");
+  const strike = Math.max(0, Math.round(parsedStrike));
+  const qty = Math.max(1, Math.round(parsedQty));
+  const price = Math.max(0, parsedPrice);
+
+  if (side && /sell|\uB9E4\uB3C4/i.test(side)) {
+    return {
+      mode: "sell",
+      underlying,
+      type,
+      strike,
+      qty,
+      price,
+    };
+  }
+
+  return {
+    mode: "buy",
+    trade: {
+      underlying,
+      type,
+      strike: String(strike),
+      qty: String(qty),
+      price: price.toFixed(2),
+    },
+  };
+}
 function parsePriceCents(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -226,7 +410,13 @@ export function App(): JSX.Element {
   const [isTradeOpen, setTradeOpen] = useState(false);
   const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults());
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
-  const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
+  const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({
+    underlying: "Thu",
+    type: "Call",
+    strike: "0",
+    price: "0.00",
+    qty: "1",
+  });
   const [kospiInput, setKospiInput] = useState<string>(() => {
     const latest = loadKospi200Value();
     return latest === undefined ? "0" : String(Math.max(0, Math.round(latest)));
@@ -235,6 +425,8 @@ export function App(): JSX.Element {
   const [isBusy, setBusy] = useState(false);
   const [showNavKrw, setShowNavKrw] = useState(false);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+  const [pendingImportForm, setPendingImportForm] = useState<PendingImportFormState | null>(null);
+  const [pendingImportId, setPendingImportId] = useState<string | null>(null);
   const pendingReconcile = useRef(0);
   const touchStartX = useRef<Record<string, number>>({});
   const longPressTimers = useRef<Record<string, number>>({});
@@ -246,6 +438,129 @@ export function App(): JSX.Element {
     () => state.openPositions.find((position) => position.id === selectedPositionId) ?? null,
     [state.openPositions, selectedPositionId],
   );
+
+  async function acknowledgePendingImport(): Promise<void> {
+    if (!pendingImportId || typeof fetch !== "function") return;
+
+    const id = pendingImportId;
+    setPendingImportId(null);
+    try {
+      await fetch(`/api/pending-imports?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch {
+      // Keep local flow working even when network is unavailable.
+    }
+  }
+
+  async function loadServerPendingImport(): Promise<void> {
+    if (pendingImportForm || typeof fetch !== "function") return;
+
+    try {
+      const response = await fetch("/api/pending-imports");
+      if (!response.ok) return;
+
+      const payload = (await response.json()) as { item?: PendingServerImport | null };
+      const item = payload.item ?? null;
+      if (!item) return;
+
+      setPendingImportForm({
+        mode: item.mode,
+        underlying: item.underlying,
+        type: item.type,
+        strike: String(item.strike),
+        qty: String(item.qty),
+        price: item.price.toFixed(2),
+      });
+      setPendingImportId(item.id);
+    } catch {
+      // Ignore transient fetch errors.
+    }
+  }
+
+  async function dismissPendingImport(): Promise<void> {
+    await acknowledgePendingImport();
+    setPendingImportForm(null);
+    await loadServerPendingImport();
+  }
+
+  useEffect(() => {
+    const importAction = parseTradeFromUrl();
+    if (!importAction) {
+      void loadServerPendingImport();
+      return;
+    }
+
+    setPendingImportForm(toPendingImportForm(importAction));
+    setPendingImportId(null);
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete("sms");
+    params.delete("type");
+    params.delete("strike");
+    params.delete("qty");
+    params.delete("price");
+    params.delete("underlying");
+    params.delete("side");
+    params.delete("sentAt");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, []);
+
+  useEffect(() => {
+    if (pendingImportForm) return;
+
+    const timer = window.setInterval(() => {
+      void loadServerPendingImport();
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [pendingImportForm]);
+
+  function reviewParsedImport(): void {
+    if (!pendingImportForm) return;
+
+    const strike = Math.max(0, Math.round(Number(pendingImportForm.strike) || 0));
+    const qty = Math.max(1, Math.round(Number(pendingImportForm.qty) || 1));
+    const price = Math.max(0, Number(pendingImportForm.price) || 0);
+
+    if (pendingImportForm.mode === "buy") {
+      setTradeForm({
+        underlying: pendingImportForm.underlying,
+        type: pendingImportForm.type,
+        strike: String(strike),
+        qty: String(qty),
+        price: price.toFixed(2),
+      });
+      setTradeOpen(true);
+      window.setTimeout(() => strikeInputRef.current?.focus(), 0);
+      void acknowledgePendingImport();
+      setPendingImportForm(null);
+      return;
+    }
+
+    const target = state.openPositions.find(
+      (position) =>
+        position.underlying === pendingImportForm.underlying &&
+        position.type === pendingImportForm.type &&
+        position.strike === strike,
+    );
+
+    if (!target) {
+      window.alert("No matching open position found for the parsed sell transaction.");
+      return;
+    }
+
+    setSelectedPositionId(target.id);
+    setPositionActionForm({
+      underlying: pendingImportForm.underlying,
+      type: pendingImportForm.type,
+      strike: String(strike),
+      price: price.toFixed(2),
+      qty: String(Math.min(target.qty, qty)),
+    });
+    void acknowledgePendingImport();
+    setPendingImportForm(null);
+  }
 
   function openTradeSheet(): void {
     setTradeForm(createTradeDefaults());
@@ -384,8 +699,16 @@ export function App(): JSX.Element {
 
   function handleUpdatePosition(): void {
     if (!selectedPosition) return;
+
+    const strike = Math.max(0, Math.round(Number(positionActionForm.strike) || selectedPosition.strike));
     const price = Math.max(0, Number(positionActionForm.price) || 0);
-    const nextState = updatePositionPrice(state, selectedPosition.id, price);
+    const nextState = updateOpenPosition(state, selectedPosition.id, {
+      underlying: positionActionForm.underlying,
+      type: positionActionForm.type,
+      strike,
+      currentPrice: price,
+    });
+
     mutate(nextState, closePositionActions);
   }
 
@@ -428,6 +751,67 @@ export function App(): JSX.Element {
 
   return (
     <main className="app-shell">
+      {pendingImportForm ? (
+        <section className="card">
+          <div className="card-topline">
+            <h2>Parsed Transaction</h2>
+          </div>
+          <p className="empty-state">Tap fields to edit before review.</p>
+
+          <ToggleGroup
+            label="Underlying"
+            value={pendingImportForm.underlying}
+            options={["Mon", "Thu", "Month"]}
+            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, underlying: value } : current))}
+          />
+
+          <ToggleGroup
+            label="Type"
+            value={pendingImportForm.type}
+            options={["Call", "Put"]}
+            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, type: value } : current))}
+          />
+
+          <NumberField
+            label="Strike"
+            value={pendingImportForm.strike}
+            integer
+            step={1}
+            min={0}
+            showHint={false}
+            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, strike: value } : current))}
+          />
+
+          <NumberField
+            label="Qty"
+            value={pendingImportForm.qty}
+            integer
+            step={1}
+            min={1}
+            showHint={false}
+            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, qty: value } : current))}
+          />
+
+          <NumberField
+            label="Price"
+            value={pendingImportForm.price}
+            step={0.05}
+            min={0}
+            digitShift
+            showHint={false}
+            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, price: value } : current))}
+          />
+
+          <div className="sheet-actions">
+            <button type="button" className="ghost-btn" onClick={() => void dismissPendingImport()}>
+              Dismiss Import
+            </button>
+            <button type="button" className="primary-btn" onClick={reviewParsedImport}>
+              Review Parsed
+            </button>
+          </div>
+        </section>
+      ) : null}
       {isBusy ? (
         <div className="busy-indicator" role="status" aria-live="polite">
           <span className="busy-dot" />
@@ -624,6 +1008,30 @@ export function App(): JSX.Element {
               </button>
             </div>
 
+            <ToggleGroup
+              label="Underlying"
+              value={positionActionForm.underlying}
+              options={["Mon", "Thu", "Month"]}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, underlying: value }))}
+            />
+
+            <ToggleGroup
+              label="Type"
+              value={positionActionForm.type}
+              options={["Call", "Put"]}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, type: value }))}
+            />
+
+            <NumberField
+              label="Strike"
+              value={positionActionForm.strike}
+              integer
+              step={1}
+              min={0}
+              showHint={false}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, strike: value }))}
+            />
+
             <NumberField
               label="Price"
               value={positionActionForm.price}
@@ -658,5 +1066,3 @@ export function App(): JSX.Element {
     </main>
   );
 }
-
-

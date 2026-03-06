@@ -5,6 +5,7 @@ import {
   closePosition,
   createInitialLedgerState,
   getDefaultUnderlying,
+  updateOpenPosition,
   updatePositionPrice,
 } from "../domain/ledger";
 import { formatKrwFromPoints, formatPoints } from "../domain/format";
@@ -64,6 +65,28 @@ describe("ledger domain", () => {
     const dashboard = buildDashboard(next);
 
     expect(dashboard.unrealizedPoints).toBeCloseTo(0.496, 6);
+  });
+
+
+  test("updating position key merges into existing open position", () => {
+    let state = createInitialLedgerState();
+    state = addTrade(state, { underlying: "Thu", type: "Call", strike: 350, qty: 1, price: 1.0 });
+    state = addTrade(state, { underlying: "Mon", type: "Put", strike: 360, qty: 2, price: 1.2 });
+
+    const source = state.openPositions.find((position) => position.underlying === "Thu")!;
+    const next = updateOpenPosition(state, source.id, {
+      underlying: "Mon",
+      type: "Put",
+      strike: 360,
+      currentPrice: 1.5,
+    });
+
+    expect(next.openPositions).toHaveLength(1);
+    expect(next.openPositions[0].underlying).toBe("Mon");
+    expect(next.openPositions[0].type).toBe("Put");
+    expect(next.openPositions[0].strike).toBe(360);
+    expect(next.openPositions[0].qty).toBe(3);
+    expect(next.openPositions[0].currentPrice).toBe(1.5);
   });
 
   test("partial close applies buy/sell fees to realized", () => {
