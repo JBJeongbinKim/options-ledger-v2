@@ -139,6 +139,16 @@ interface PendingImportFormState {
   price: string;
 }
 
+interface PendingServerImport {
+  id: string;
+  mode: "buy" | "sell";
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: number;
+  qty: number;
+  price: number;
+}
+
 function toPendingImportForm(action: SmsImportAction): PendingImportFormState {
   if (action.mode === "buy") {
     return {
@@ -416,6 +426,7 @@ export function App(): JSX.Element {
   const [showNavKrw, setShowNavKrw] = useState(false);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [pendingImportForm, setPendingImportForm] = useState<PendingImportFormState | null>(null);
+  const [pendingImportId, setPendingImportId] = useState<string | null>(null);
   const pendingReconcile = useRef(0);
   const touchStartX = useRef<Record<string, number>>({});
   const longPressTimers = useRef<Record<string, number>>({});
@@ -428,11 +439,58 @@ export function App(): JSX.Element {
     [state.openPositions, selectedPositionId],
   );
 
+  async function acknowledgePendingImport(): Promise<void> {
+    if (!pendingImportId || typeof fetch !== "function") return;
+
+    const id = pendingImportId;
+    setPendingImportId(null);
+    try {
+      await fetch(`/api/pending-imports?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch {
+      // Keep local flow working even when network is unavailable.
+    }
+  }
+
+  async function loadServerPendingImport(): Promise<void> {
+    if (pendingImportForm || typeof fetch !== "function") return;
+
+    try {
+      const response = await fetch("/api/pending-imports");
+      if (!response.ok) return;
+
+      const payload = (await response.json()) as { item?: PendingServerImport | null };
+      const item = payload.item ?? null;
+      if (!item) return;
+
+      setPendingImportForm({
+        mode: item.mode,
+        underlying: item.underlying,
+        type: item.type,
+        strike: String(item.strike),
+        qty: String(item.qty),
+        price: item.price.toFixed(2),
+      });
+      setPendingImportId(item.id);
+    } catch {
+      // Ignore transient fetch errors.
+    }
+  }
+
+  async function dismissPendingImport(): Promise<void> {
+    await acknowledgePendingImport();
+    setPendingImportForm(null);
+    await loadServerPendingImport();
+  }
+
   useEffect(() => {
     const importAction = parseTradeFromUrl();
-    if (!importAction) return;
+    if (!importAction) {
+      void loadServerPendingImport();
+      return;
+    }
 
     setPendingImportForm(toPendingImportForm(importAction));
+    setPendingImportId(null);
 
     const params = new URLSearchParams(window.location.search);
     params.delete("sms");
@@ -447,6 +505,16 @@ export function App(): JSX.Element {
     const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
     window.history.replaceState({}, "", nextUrl);
   }, []);
+
+  useEffect(() => {
+    if (pendingImportForm) return;
+
+    const timer = window.setInterval(() => {
+      void loadServerPendingImport();
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [pendingImportForm]);
 
   function reviewParsedImport(): void {
     if (!pendingImportForm) return;
@@ -465,6 +533,7 @@ export function App(): JSX.Element {
       });
       setTradeOpen(true);
       window.setTimeout(() => strikeInputRef.current?.focus(), 0);
+      void acknowledgePendingImport();
       setPendingImportForm(null);
       return;
     }
@@ -489,6 +558,7 @@ export function App(): JSX.Element {
       price: price.toFixed(2),
       qty: String(Math.min(target.qty, qty)),
     });
+    void acknowledgePendingImport();
     setPendingImportForm(null);
   }
 
@@ -733,7 +803,7 @@ export function App(): JSX.Element {
           />
 
           <div className="sheet-actions">
-            <button type="button" className="ghost-btn" onClick={() => setPendingImportForm(null)}>
+            <button type="button" className="ghost-btn" onClick={() => void dismissPendingImport()}>
               Dismiss Import
             </button>
             <button type="button" className="primary-btn" onClick={reviewParsedImport}>
