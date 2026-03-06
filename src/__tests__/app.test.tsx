@@ -96,4 +96,22 @@ describe("App dashboard", () => {
     expect(screen.getByText("1 @ 10.00")).toBeInTheDocument();
     expect(screen.getByText("8.75 pt")).toBeInTheDocument();
   });
+
+  test("hard reset clears ledger and sets NAV/Cash to entered points", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await addBaseTrade(user);
+    expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Reset / Cleanup"));
+    await user.clear(screen.getByLabelText("Hard Reset NAV"));
+    await user.type(screen.getByLabelText("Hard Reset NAV"), "20");
+    await user.click(screen.getByRole("button", { name: "Hard Reset Ledger" }));
+
+    expect(screen.getByText("No open positions yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("20.00 pt")).toHaveLength(2);
+    expect(screen.getAllByText("0.00 pt").length).toBeGreaterThan(0);
+  });
 });

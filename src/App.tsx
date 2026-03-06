@@ -4,6 +4,7 @@ import {
   applyKospiIntrinsicAll,
   buildDashboard,
   closePosition,
+  createInitialLedgerState,
   getDefaultUnderlying,
   updatePositionPrice,
   type LedgerState,
@@ -12,7 +13,7 @@ import {
   type UnderlyingType,
 } from "./domain/ledger";
 import { formatKrwFromPoints, formatPoints } from "./domain/format";
-import { loadLedgerState, saveLedgerState } from "./storage/local";
+import { loadLedgerState, saveLedgerState, saveResetNavPoints } from "./storage/local";
 
 type Tone = "profit" | "balance";
 
@@ -135,6 +136,7 @@ export function App(): JSX.Element {
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
   const [kospiInput, setKospiInput] = useState<string>("");
+  const [resetNavInput, setResetNavInput] = useState<string>(formatPoints(state.startingNavPoints));
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
   const selectedPosition = useMemo(
@@ -202,6 +204,17 @@ export function App(): JSX.Element {
     commit(nextState);
   }
 
+  function handleHardReset(): void {
+    const navPoints = Math.max(0, Number(resetNavInput) || 17);
+    const nextState = createInitialLedgerState(navPoints);
+    saveResetNavPoints(navPoints);
+    commit(nextState);
+    setTradeOpen(false);
+    setSelectedPositionId(null);
+    setKospiInput("");
+    setResetNavInput(formatPoints(navPoints));
+  }
+
   return (
     <main className="app-shell">
       <header className="header">
@@ -267,6 +280,26 @@ export function App(): JSX.Element {
           </div>
         )}
       </section>
+
+      <details className="card reset-card">
+        <summary>Reset / Cleanup</summary>
+        <div className="reset-row">
+          <label htmlFor="hard-reset-nav" className="form-label">
+            Hard Reset NAV (points)
+          </label>
+          <input
+            id="hard-reset-nav"
+            aria-label="Hard Reset NAV"
+            className="number-input"
+            value={resetNavInput}
+            inputMode="decimal"
+            onChange={(event) => setResetNavInput(event.target.value)}
+          />
+        </div>
+        <button type="button" className="danger-btn" onClick={handleHardReset}>
+          Hard Reset Ledger
+        </button>
+      </details>
 
       {isTradeOpen ? (
         <section className="sheet-overlay" aria-label="New Trade Modal">

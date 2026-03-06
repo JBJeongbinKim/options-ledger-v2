@@ -243,3 +243,16 @@ body {
 .neg {
   color: #cc1b1b;
 }
+
+.reset-card summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.reset-row {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
