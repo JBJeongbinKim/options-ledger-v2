@@ -6,7 +6,7 @@ import {
   closePosition,
   createInitialLedgerState,
   getDefaultUnderlying,
-  updatePositionPrice,
+  updateOpenPosition,
   type LedgerState,
   type OpenPosition,
   type PositionType,
@@ -32,6 +32,9 @@ interface TradeFormState {
 }
 
 interface PositionActionFormState {
+  underlying: UnderlyingType;
+  type: PositionType;
+  strike: string;
   price: string;
   qty: string;
 }
@@ -80,6 +83,9 @@ function createTradeDefaults(): TradeFormState {
 
 function createPositionActionDefaults(position: OpenPosition): PositionActionFormState {
   return {
+    underlying: position.underlying,
+    type: position.type,
+    strike: String(position.strike),
     price: formatPoints(position.currentPrice),
     qty: String(position.qty),
   };
@@ -162,7 +168,7 @@ function parseSmsImportAction(message: string, referenceDate: Date): SmsImportAc
 
   const typeMatch = normalized.match(/\b([CP])\b/i);
   const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
-  const qtyMatch = normalized.match(/([0-9,]+)\s*���/i);
+  const qtyMatch = normalized.match(/([0-9,]+)\s*\uACC4\uC57D/i);
   const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
   if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
 
@@ -231,7 +237,7 @@ function parseTradeFromUrl(): SmsImportAction | null {
   const qty = Math.max(1, Math.round(parsedQty));
   const price = Math.max(0, parsedPrice);
 
-  if (side && /sell|�ŵ�/i.test(side)) {
+  if (side && /sell|\uB9E4\uB3C4/i.test(side)) {
     return {
       mode: "sell",
       underlying,
@@ -394,7 +400,13 @@ export function App(): JSX.Element {
   const [isTradeOpen, setTradeOpen] = useState(false);
   const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults());
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
-  const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
+  const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({
+    underlying: "Thu",
+    type: "Call",
+    strike: "0",
+    price: "0.00",
+    qty: "1",
+  });
   const [kospiInput, setKospiInput] = useState<string>(() => {
     const latest = loadKospi200Value();
     return latest === undefined ? "0" : String(Math.max(0, Math.round(latest)));
@@ -471,6 +483,9 @@ export function App(): JSX.Element {
 
     setSelectedPositionId(target.id);
     setPositionActionForm({
+      underlying: pendingImportForm.underlying,
+      type: pendingImportForm.type,
+      strike: String(strike),
       price: price.toFixed(2),
       qty: String(Math.min(target.qty, qty)),
     });
@@ -614,8 +629,16 @@ export function App(): JSX.Element {
 
   function handleUpdatePosition(): void {
     if (!selectedPosition) return;
+
+    const strike = Math.max(0, Math.round(Number(positionActionForm.strike) || selectedPosition.strike));
     const price = Math.max(0, Number(positionActionForm.price) || 0);
-    const nextState = updatePositionPrice(state, selectedPosition.id, price);
+    const nextState = updateOpenPosition(state, selectedPosition.id, {
+      underlying: positionActionForm.underlying,
+      type: positionActionForm.type,
+      strike,
+      currentPrice: price,
+    });
+
     mutate(nextState, closePositionActions);
   }
 
@@ -914,6 +937,30 @@ export function App(): JSX.Element {
                 x
               </button>
             </div>
+
+            <ToggleGroup
+              label="Underlying"
+              value={positionActionForm.underlying}
+              options={["Mon", "Thu", "Month"]}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, underlying: value }))}
+            />
+
+            <ToggleGroup
+              label="Type"
+              value={positionActionForm.type}
+              options={["Call", "Put"]}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, type: value }))}
+            />
+
+            <NumberField
+              label="Strike"
+              value={positionActionForm.strike}
+              integer
+              step={1}
+              min={0}
+              showHint={false}
+              onChange={(value) => setPositionActionForm((current) => ({ ...current, strike: value }))}
+            />
 
             <NumberField
               label="Price"

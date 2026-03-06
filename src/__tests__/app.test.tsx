@@ -63,6 +63,23 @@ describe("App dashboard", () => {
     expect(screen.getByText(/Value 1.75/)).toBeInTheDocument();
     expect(screen.getAllByText("+0.50 pt").length).toBeGreaterThan(0);
   });
+  test("updates underlying/type/strike from position action modal", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await addBaseTrade(user);
+    await user.click(screen.getByRole("button", { name: /Thu Call 350/ }));
+
+    await user.click(screen.getByRole("button", { name: "Mon" }));
+    await user.click(screen.getByRole("button", { name: "Put" }));
+    await user.clear(screen.getByLabelText("Strike"));
+    await user.type(screen.getByLabelText("Strike"), "360");
+    await user.click(screen.getByRole("button", { name: "Update" }));
+
+    expect(screen.getByRole("button", { name: /Mon Put 360/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Thu Call 350/ })).not.toBeInTheDocument();
+  });
 
   test("can add a put option from new trade form", async () => {
     window.localStorage.clear();
