@@ -45,6 +45,13 @@ body {
   font-size: 1.02rem;
 }
 
+.card-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .metric-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -75,10 +82,130 @@ body {
   font-weight: 700;
 }
 
+.primary-btn,
+.ghost-btn,
+.step-btn,
+.toggle-btn,
+.position-item {
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+}
+
+.primary-btn {
+  background: #1b5fe0;
+  color: #ffffff;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
+.ghost-btn {
+  background: #edf2fa;
+  color: #1d2f4f;
+  padding: 8px 12px;
+  font-weight: 600;
+}
+
 .empty-state {
-  margin: 0;
+  margin: 2px 0 0;
   color: #5f6d88;
   font-size: 0.95rem;
+}
+
+.positions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.position-item {
+  width: 100%;
+  background: #f7f9fd;
+  border: 1px solid #dce5f4;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  color: #18243d;
+}
+
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 27, 47, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 8px;
+}
+
+.sheet {
+  background: #ffffff;
+  width: 100%;
+  max-width: 430px;
+  border-radius: 20px 20px 0 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #2d3d5c;
+}
+
+.toggle-group {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.toggle-btn {
+  background: #f0f4fb;
+  color: #1a2c4a;
+  padding: 8px;
+}
+
+.toggle-btn.active {
+  background: #1b5fe0;
+  color: #ffffff;
+}
+
+.step-field {
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  gap: 6px;
+}
+
+.step-btn {
+  background: #e8eef9;
+  color: #23375b;
+}
+
+.number-input {
+  width: 100%;
+  border: 1px solid #ced8ea;
+  border-radius: 10px;
+  padding: 8px;
+  font: inherit;
+}
+
+.hint {
+  color: #6b7892;
+}
+
+.sheet-actions {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .neutral {
