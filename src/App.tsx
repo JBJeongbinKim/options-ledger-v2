@@ -14,12 +14,11 @@ import {
 } from "./domain/ledger";
 import { formatKrwFromPoints, formatPoints, formatSignedPoints } from "./domain/format";
 import {
-  loadKospi200Value,
-  loadLedgerState,
-  saveKospi200Value,
-  saveLedgerState,
-  saveResetNavPoints,
-} from "./storage/local";
+  canUseServerPersistence,
+  loadInitialAppState,
+  loadPersistedAppState,
+  savePersistedAppState,
+} from "./storage/appState";
 
 type Tone = "profit" | "balance";
 
@@ -406,7 +405,8 @@ function NumberField(props: {
 }
 
 export function App(): JSX.Element {
-  const [state, setState] = useState<LedgerState>(() => loadLedgerState());
+  const initialAppState = loadInitialAppState();
+  const [state, setState] = useState<LedgerState>(() => initialAppState.ledgerState);
   const [isTradeOpen, setTradeOpen] = useState(false);
   const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults());
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
@@ -417,28 +417,72 @@ export function App(): JSX.Element {
     price: "0.00",
     qty: "1",
   });
+  const [savedKospiValue, setSavedKospiValue] = useState<number | undefined>(() => initialAppState.kospi200Value);
   const [kospiInput, setKospiInput] = useState<string>(() => {
-    const latest = loadKospi200Value();
+    const latest = initialAppState.kospi200Value;
     return latest === undefined ? "0" : String(Math.max(0, Math.round(latest)));
   });
-  const [resetNavInput, setResetNavInput] = useState<string>(formatPoints(state.startingNavPoints));
+  const [resetNavInput, setResetNavInput] = useState<string>(formatPoints(initialAppState.ledgerState.startingNavPoints));
   const [isBusy, setBusy] = useState(false);
+  const [isHydrating, setHydrating] = useState<boolean>(() => canUseServerPersistence());
   const [showNavKrw, setShowNavKrw] = useState(false);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [pendingImportForm, setPendingImportForm] = useState<PendingImportFormState | null>(null);
   const [pendingImportId, setPendingImportId] = useState<string | null>(null);
-  const serverImportEnabled = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+  const serverImportEnabled = canUseServerPersistence();
   const pendingReconcile = useRef(0);
   const touchStartX = useRef<Record<string, number>>({});
   const longPressTimers = useRef<Record<string, number>>({});
   const suppressOpenIds = useRef<Record<string, boolean>>({});
   const strikeInputRef = useRef<HTMLInputElement>(null);
+  const savedKospiValueRef = useRef<number | undefined>(initialAppState.kospi200Value);
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
   const selectedPosition = useMemo(
     () => state.openPositions.find((position) => position.id === selectedPositionId) ?? null,
     [state.openPositions, selectedPositionId],
   );
+
+  useEffect(() => {
+    savedKospiValueRef.current = savedKospiValue;
+  }, [savedKospiValue]);
+
+  useEffect(() => {
+    if (!serverImportEnabled) {
+      setHydrating(false);
+      return;
+    }
+
+    let isActive = true;
+
+    void loadPersistedAppState()
+      .then((snapshot) => {
+        if (!isActive) return;
+        setState(snapshot.ledgerState);
+        setSavedKospiValue(snapshot.kospi200Value);
+        setKospiInput(snapshot.kospi200Value === undefined ? "0" : String(Math.max(0, Math.round(snapshot.kospi200Value))));
+        setResetNavInput(formatPoints(snapshot.ledgerState.startingNavPoints));
+      })
+      .catch(() => {
+        if (!isActive) return;
+        window.alert("Unable to load shared ledger data. The screen may be stale until the connection recovers.");
+      })
+      .finally(() => {
+        if (isActive) setHydrating(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [serverImportEnabled]);
+
+  async function persistAppState(nextState: LedgerState, nextKospiValue: number | undefined = savedKospiValueRef.current): Promise<void> {
+    try {
+      await savePersistedAppState({ ledgerState: nextState, kospi200Value: nextKospiValue });
+    } catch {
+      window.alert("Unable to save shared ledger data. Please retry once the connection is stable.");
+    }
+  }
 
   async function acknowledgePendingImport(): Promise<void> {
     if (!serverImportEnabled || !pendingImportId || typeof fetch !== "function") return;
@@ -578,9 +622,9 @@ export function App(): JSX.Element {
     setSelectedPositionId(null);
   }
 
-  function commit(nextState: LedgerState): void {
-    saveLedgerState(nextState);
+  function commit(nextState: LedgerState, nextKospiValue: number | undefined = savedKospiValueRef.current): void {
     setState(nextState);
+    void persistAppState(nextState, nextKospiValue);
   }
 
   function beginReconcilePulse(): void {
@@ -594,8 +638,8 @@ export function App(): JSX.Element {
     }, 260);
   }
 
-  function mutate(nextState: LedgerState, after?: () => void): void {
-    commit(nextState);
+  function mutate(nextState: LedgerState, after?: () => void, nextKospiValue: number | undefined = savedKospiValueRef.current): void {
+    commit(nextState, nextKospiValue);
     if (after) after();
     beginReconcilePulse();
   }
@@ -731,24 +775,37 @@ export function App(): JSX.Element {
     const kospi = Math.max(0, Math.round(Number(kospiInput)));
     if (!Number.isFinite(kospi)) return;
     setKospiInput(String(kospi));
-    saveKospi200Value(kospi);
+    setSavedKospiValue(kospi);
     const nextState = applyKospiIntrinsicAll(state, kospi);
-    mutate(nextState);
+    mutate(nextState, undefined, kospi);
   }
 
   function handleHardReset(): void {
     const navPoints = Math.max(0, Number(resetNavInput) || 17);
     const nextState = createInitialLedgerState(navPoints);
-    saveResetNavPoints(navPoints);
-    mutate(nextState, () => {
-      setTradeOpen(false);
-      setSelectedPositionId(null);
-      setKospiInput(String(Math.max(0, Math.round(loadKospi200Value() ?? 0))));
-      setResetNavInput(formatPoints(navPoints));
-    });
+    mutate(
+      nextState,
+      () => {
+        setTradeOpen(false);
+        setSelectedPositionId(null);
+        setKospiInput(savedKospiValueRef.current === undefined ? "0" : String(Math.max(0, Math.round(savedKospiValueRef.current))));
+        setResetNavInput(formatPoints(navPoints));
+      },
+      savedKospiValueRef.current,
+    );
   }
 
   const navPointsLabel = `${formatPoints(dashboard.cashPoints)} / ${formatPoints(dashboard.navPoints)} pt`;
+
+  if (isHydrating) {
+    return (
+      <main className="app-shell">
+        <section className="card">
+          <p className="empty-state">Loading ledger...</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -1067,3 +1124,4 @@ export function App(): JSX.Element {
     </main>
   );
 }
+

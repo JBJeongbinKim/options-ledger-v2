@@ -1,4 +1,6 @@
-﻿export class QueueUnavailableError extends Error {
+import { KvUnavailableError, getKvClient, toKvUnavailableError } from "./kvStore.js";
+
+export class QueueUnavailableError extends KvUnavailableError {
   constructor(message) {
     super(message);
     this.name = "QueueUnavailableError";
@@ -8,34 +10,9 @@
 const QUEUE_KEY = "options-ledger-v2.pending-import-queue";
 const MAX_QUEUE = 200;
 
-function hasKvConfig() {
-  const hasVercelKv = Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
-  const hasUpstash = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-  return hasVercelKv || hasUpstash;
-}
-
-function ensureKvConfigured() {
-  if (!hasKvConfig()) {
-    throw new QueueUnavailableError(
-      "KV is not configured. Add an Upstash Redis/KV integration in Vercel and redeploy.",
-    );
-  }
-}
-
 function normalizeQueueError(error) {
   if (error instanceof QueueUnavailableError) return error;
-  const message = error instanceof Error ? error.message : "Unknown queue error";
-  return new QueueUnavailableError(`KV request failed: ${message}`);
-}
-
-async function getKvClient() {
-  ensureKvConfigured();
-  try {
-    const mod = await import("@vercel/kv");
-    return mod.kv;
-  } catch (error) {
-    throw normalizeQueueError(error);
-  }
+  return new QueueUnavailableError(toKvUnavailableError(error).message);
 }
 
 export async function readQueue() {
