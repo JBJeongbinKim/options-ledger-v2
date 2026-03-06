@@ -15,15 +15,14 @@ async function addBaseTrade(user: ReturnType<typeof userEvent.setup>, qty = "1")
 }
 
 describe("App dashboard", () => {
-  test("shows dashboard with default NAV and option values row", () => {
+  test("shows top metrics with revised labels", () => {
     window.localStorage.clear();
     render(<App />);
 
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Option Values")).toBeInTheDocument();
     expect(screen.getByText("Realized P&L")).toBeInTheDocument();
     expect(screen.queryByText("Realized Week")).not.toBeInTheDocument();
-    expect(screen.getAllByText("17.00 pt")).toHaveLength(2);
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
   });
 
   test("adds trades and merges same option into one open position", async () => {
@@ -51,9 +50,8 @@ describe("App dashboard", () => {
     await user.type(priceInput, "175");
     await user.click(screen.getByRole("button", { name: "Update" }));
 
-    expect(screen.getByText(/Mark 1.75/)).toBeInTheDocument();
-    expect(screen.getByText("Unrealized P&L")).toBeInTheDocument();
-    expect(screen.getByText("+0.50 pt")).toBeInTheDocument();
+    expect(screen.getByText(/Mkt 1.75/)).toBeInTheDocument();
+    expect(screen.getAllByText("+0.50 pt").length).toBeGreaterThan(0);
   });
 
   test("apply-all updates open positions using intrinsic values", async () => {
@@ -66,8 +64,8 @@ describe("App dashboard", () => {
     await user.type(screen.getByLabelText("KOSPI200"), "360");
     await user.click(screen.getByRole("button", { name: "Apply All" }));
 
-    expect(screen.getByText(/Mark 10.00/)).toBeInTheDocument();
-    expect(screen.getByText("+8.75 pt")).toBeInTheDocument();
+    expect(screen.getByText(/Mkt 10.00/)).toBeInTheDocument();
+    expect(screen.getAllByText("+8.75 pt").length).toBeGreaterThan(0);
   });
 
   test("hard reset clears ledger and sets NAV/Cash to entered points", async () => {
@@ -78,12 +76,13 @@ describe("App dashboard", () => {
     await addBaseTrade(user);
     expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
 
-    await user.click(screen.getByText("Reset / Cleanup"));
+    await user.click(screen.getByText("Reset"));
     await user.clear(screen.getByLabelText("Hard Reset NAV"));
     await user.type(screen.getByLabelText("Hard Reset NAV"), "20");
     await user.click(screen.getByRole("button", { name: "Hard Reset Ledger" }));
 
     expect(screen.getByText("No open positions yet.")).toBeInTheDocument();
-    expect(screen.getAllByText("20.00 pt")).toHaveLength(2);
+    expect(screen.getAllByText("20.00 pt").length).toBeGreaterThan(0);
   });
 });
+

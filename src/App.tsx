@@ -281,43 +281,18 @@ export function App(): JSX.Element {
 
   return (
     <main className="app-shell">
-      <header className="header">
-        <h1>Options Ledger</h1>
-        <p>Single-user local ledger</p>
-      </header>
-
       <section className="card">
-        <h2>Dashboard</h2>
         <MetricRow label="NAV" points={dashboard.navPoints} tone="balance" />
-        <MetricRow label="Option Values" points={dashboard.marketValuePoints} tone="balance" />
+        <MetricRow label="Option Values" points={dashboard.marketValuePoints} tone="balance" showKrw={false} />
         <MetricRow label="Cash" points={dashboard.cashPoints} tone="balance" showKrw={false} />
-        <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed />
-        <MetricRow label="Realized P&L" points={dashboard.realizedTodayPoints} tone="profit" signed />
+        <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed showKrw={false} />
+        <MetricRow label="Realized P&L" points={dashboard.realizedTodayPoints} tone="profit" signed showKrw={false} />
       </section>
 
       <section className="card">
-        <div className="card-topline">
-          <h2>KOSPI200 Apply-All</h2>
-        </div>
-        <div className="kospi-row">
-          <input
-            aria-label="KOSPI200"
-            className="number-input"
-            value={kospiInput}
-            inputMode="decimal"
-            placeholder="Enter KOSPI200"
-            onChange={(event) => setKospiInput(event.target.value)}
-          />
-          <button type="button" className="primary-btn" onClick={handleApplyKospiAll}>
-            Apply All
-          </button>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="card-topline">
+        <div className="card-topline card-topline-open">
           <h2>Open Positions</h2>
-          <button type="button" className="primary-btn" onClick={openTradeSheet}>
+          <button type="button" className="primary-btn new-trade-btn" onClick={openTradeSheet}>
             New Trade
           </button>
         </div>
@@ -335,15 +310,16 @@ export function App(): JSX.Element {
                   className="position-item"
                   onClick={() => openPositionActions(position)}
                 >
-                  <span className="position-line-main">
-                    {position.underlying} {position.type} {position.strike}
-                  </span>
-                  <span className="position-line-sub">
-                    Qty {position.qty} | Avg {formatPoints(position.entryPrice)} | Mark {formatPoints(position.currentPrice)}
-                  </span>
-                  <span className={`position-line-pnl ${valueColor(pnlPoints, "profit")}`}>
-                    P&L {formatSignedPoints(pnlPoints)} pt
-                  </span>
+                  <div className="position-row">
+                    <span className="position-line-main">
+                      {position.underlying} {position.type} {position.strike}
+                    </span>
+                    <span className="position-line-sub">Qty {position.qty} | Avg {formatPoints(position.entryPrice)}</span>
+                  </div>
+                  <div className="position-row">
+                    <span className={`position-line-pnl ${valueColor(pnlPoints, "profit")}`}>{formatSignedPoints(pnlPoints)} pt</span>
+                    <span className="position-line-sub">Mkt {formatPoints(position.currentPrice)}</span>
+                  </div>
                 </button>
               );
             })}
@@ -351,8 +327,27 @@ export function App(): JSX.Element {
         )}
       </section>
 
+      <section className="card">
+        <div className="card-topline">
+          <h2>KOSPI200</h2>
+        </div>
+        <div className="kospi-row">
+          <input
+            aria-label="KOSPI200"
+            className="number-input"
+            value={kospiInput}
+            inputMode="decimal"
+            placeholder="Enter KOSPI200"
+            onChange={(event) => setKospiInput(event.target.value)}
+          />
+          <button type="button" className="primary-btn" onClick={handleApplyKospiAll}>
+            Apply All
+          </button>
+        </div>
+      </section>
+
       <details className="card reset-card">
-        <summary>Reset / Cleanup</summary>
+        <summary>Reset</summary>
         <div className="reset-row">
           <label htmlFor="hard-reset-nav" className="form-label">
             Hard Reset NAV (points)
@@ -472,4 +467,3 @@ export function App(): JSX.Element {
     </main>
   );
 }
-
