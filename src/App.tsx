@@ -197,7 +197,7 @@ export function App(): JSX.Element {
     <main className="app-shell">
       <header className="header">
         <h1>Options Ledger</h1>
-        <p>Single-user local ledger</p>
+        <p>Single-user local ledger</p>\n        <p className="build-marker">Build check: phase-4 / 649a8fc</p>
       </header>
 
       <section className="card">
@@ -339,3 +339,5 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
+
