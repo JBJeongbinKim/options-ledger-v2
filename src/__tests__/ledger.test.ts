@@ -28,25 +28,14 @@ describe("ledger domain", () => {
     expect(formatKrwFromPoints(dashboard.navPoints)).toBe("\u20A95,625,000");
   });
 
-  test("add trade creates open position and keeps NAV stable at entry", () => {
-    const base = createInitialLedgerState();
-    const next = addTrade(
-      base,
-      {
-        underlying: "Thu",
-        type: "Call",
-        strike: 350,
-        qty: 1,
-        price: 1.25,
-      },
-      new Date("2026-03-05T12:00:00.000Z"),
-    );
-    const dashboard = buildDashboard(next);
+  test("add trade merges same option into one line with weighted avg cost", () => {
+    let state = createInitialLedgerState();
+    state = addTrade(state, { underlying: "Thu", type: "Call", strike: 350, qty: 1, price: 1.0 });
+    state = addTrade(state, { underlying: "Thu", type: "Call", strike: 350, qty: 3, price: 1.5 });
 
-    expect(next.openPositions).toHaveLength(1);
-    expect(next.cashPoints).toBe(15.75);
-    expect(dashboard.unrealizedPoints).toBe(0);
-    expect(dashboard.navPoints).toBe(17);
+    expect(state.openPositions).toHaveLength(1);
+    expect(state.openPositions[0].qty).toBe(4);
+    expect(state.openPositions[0].entryPrice).toBe(1.375);
   });
 
   test("update position changes current price and unrealized", () => {

@@ -79,7 +79,8 @@ body {
 }
 
 .metric-value,
-.metric-sub {
+.metric-sub,
+.metric-sub-empty {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -138,8 +139,25 @@ body {
   border: 1px solid #dce5f4;
   padding: 10px;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   color: #18243d;
+  text-align: left;
+}
+
+.position-line-main {
+  font-weight: 700;
+}
+
+.position-line-sub {
+  font-size: 0.88rem;
+  color: #4d5f82;
+}
+
+.position-line-pnl {
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .sheet-overlay {
@@ -232,18 +250,6 @@ body {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
-.neutral {
-  color: #111111;
-}
-
-.pos {
-  color: #0c56d8;
-}
-
-.neg {
-  color: #cc1b1b;
-}
-
 .reset-card summary {
   cursor: pointer;
   font-weight: 700;
@@ -255,4 +261,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.neutral {
+  color: #111111;
+}
+
+.pos {
+  color: #0c56d8;
+}
+
+.neg {
+  color: #cc1b1b;
 }

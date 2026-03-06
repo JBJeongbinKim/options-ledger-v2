@@ -39,6 +39,38 @@ export interface NewTradeInput {
   price: number;
 }
 
+function positionKey(position: Pick<OpenPosition, "underlying" | "type" | "strike">): string {
+  return `${position.underlying}|${position.type}|${position.strike}`;
+}
+
+export function normalizeOpenPositions(openPositions: OpenPosition[]): OpenPosition[] {
+  const merged = new Map<string, OpenPosition>();
+
+  for (const position of openPositions) {
+    const key = positionKey(position);
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...position });
+      continue;
+    }
+
+    const totalQty = existing.qty + position.qty;
+    const weightedEntry = (existing.entryPrice * existing.qty + position.entryPrice * position.qty) / totalQty;
+    const newer = new Date(position.updatedAt).getTime() >= new Date(existing.updatedAt).getTime() ? position : existing;
+
+    merged.set(key, {
+      ...existing,
+      id: newer.id,
+      updatedAt: newer.updatedAt,
+      qty: totalQty,
+      entryPrice: weightedEntry,
+      currentPrice: newer.currentPrice,
+    });
+  }
+
+  return sortOpenPositions(Array.from(merged.values()));
+}
+
 export function createInitialLedgerState(resetNavPoints?: number): LedgerState {
   const start = resetNavPoints ?? 17;
   return {
@@ -63,7 +95,7 @@ export function sortOpenPositions(openPositions: OpenPosition[]): OpenPosition[]
 }
 
 export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = new Date()): LedgerState {
-  const position: OpenPosition = {
+  const newPosition: OpenPosition = {
     id: `pos-${now.getTime()}-${Math.random().toString(16).slice(2, 8)}`,
     updatedAt: now.toISOString(),
     underlying: trade.underlying,
@@ -74,10 +106,27 @@ export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = n
     currentPrice: trade.price,
   };
 
+  const key = positionKey(newPosition);
+  const existing = state.openPositions.find((position) => positionKey(position) === key);
+
+  const nextOpenPositions = existing
+    ? state.openPositions.map((position) => {
+        if (positionKey(position) !== key) return position;
+        const totalQty = position.qty + trade.qty;
+        return {
+          ...position,
+          qty: totalQty,
+          entryPrice: (position.entryPrice * position.qty + trade.price * trade.qty) / totalQty,
+          currentPrice: trade.price,
+          updatedAt: now.toISOString(),
+        };
+      })
+    : [newPosition, ...state.openPositions];
+
   return {
     ...state,
     cashPoints: state.cashPoints - trade.price * trade.qty,
-    openPositions: sortOpenPositions([position, ...state.openPositions]),
+    openPositions: sortOpenPositions(nextOpenPositions),
   };
 }
 
@@ -162,6 +211,7 @@ export function applyKospiIntrinsicAll(state: LedgerState, kospi200: number, now
     openPositions: sortOpenPositions(updated),
   };
 }
+
 export function getDefaultUnderlying(now: Date): UnderlyingType {
   const day = now.getDay();
   const hour = now.getHours();
@@ -189,4 +239,3 @@ export function buildDashboard(state: LedgerState): DashboardSnapshot {
     realizedWeekPoints: state.realizedWeekPoints,
   };
 }
-

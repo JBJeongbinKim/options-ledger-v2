@@ -1,4 +1,8 @@
-import { createInitialLedgerState, type LedgerState } from "../domain/ledger";
+import {
+  createInitialLedgerState,
+  normalizeOpenPositions,
+  type LedgerState,
+} from "../domain/ledger";
 
 const STORAGE_KEY = "options-ledger-v2.state";
 const RESET_NAV_KEY = "options-ledger-v2.reset-nav";
@@ -23,7 +27,7 @@ export function loadLedgerState(): LedgerState {
     return {
       startingNavPoints: parsed.startingNavPoints,
       cashPoints: parsed.cashPoints,
-      openPositions: parsed.openPositions ?? [],
+      openPositions: normalizeOpenPositions(parsed.openPositions ?? []),
       realizedTodayPoints: parsed.realizedTodayPoints ?? 0,
       realizedWeekPoints: parsed.realizedWeekPoints ?? 0,
     };

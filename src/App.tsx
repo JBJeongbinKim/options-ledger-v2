@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent } from "react";
 import {
   addTrade,
   applyKospiIntrinsicAll,
@@ -12,7 +12,7 @@ import {
   type PositionType,
   type UnderlyingType,
 } from "./domain/ledger";
-import { formatKrwFromPoints, formatPoints } from "./domain/format";
+import { formatKrwFromPoints, formatPoints, formatSignedPoints } from "./domain/format";
 import { loadLedgerState, saveLedgerState, saveResetNavPoints } from "./storage/local";
 
 type Tone = "profit" | "balance";
@@ -36,13 +36,24 @@ function valueColor(value: number, tone: Tone): string {
   return "neutral";
 }
 
-function MetricRow(props: { label: string; points: number; tone: Tone }): JSX.Element {
+function MetricRow(props: {
+  label: string;
+  points: number;
+  tone: Tone;
+  signed?: boolean;
+  showKrw?: boolean;
+}): JSX.Element {
   const colorClass = valueColor(props.points, props.tone);
+  const pointsText = props.signed ? formatSignedPoints(props.points) : formatPoints(props.points);
+
   return (
     <div className="metric-row">
       <div className="metric-label">{props.label}</div>
-      <div className={`metric-value ${colorClass}`}>{formatPoints(props.points)} pt</div>
-      <div className={`metric-sub ${colorClass}`}>{formatKrwFromPoints(props.points)}</div>
+      <div className={`metric-value ${colorClass}`}>{pointsText} pt</div>
+      {props.showKrw === false ? <div className="metric-sub-empty" /> : null}
+      {props.showKrw === false ? null : (
+        <div className={`metric-sub ${colorClass}`}>{formatKrwFromPoints(props.points, props.signed ?? false)}</div>
+      )}
     </div>
   );
 }
@@ -62,6 +73,12 @@ function createPositionActionDefaults(position: OpenPosition): PositionActionFor
     price: formatPoints(position.currentPrice),
     qty: String(position.qty),
   };
+}
+
+function parsePriceCents(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.round(parsed * 100));
 }
 
 function ToggleGroup<T extends string>(props: {
@@ -96,6 +113,7 @@ function NumberField(props: {
   step: number;
   min: number;
   integer?: boolean;
+  digitShift?: boolean;
 }): JSX.Element {
   const parsed = Number(props.value);
   const displayStep = props.integer ? String(props.step) : props.step.toFixed(2);
@@ -104,6 +122,51 @@ function NumberField(props: {
     const next = Number.isFinite(parsed) ? parsed + delta : props.min;
     const bounded = Math.max(props.min, next);
     props.onChange(props.integer ? String(Math.round(bounded)) : bounded.toFixed(2));
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (!props.digitShift) return;
+
+    if (/^[0-9]$/.test(event.key)) {
+      event.preventDefault();
+      const nextCents = parsePriceCents(props.value) * 10 + Number(event.key);
+      props.onChange((nextCents / 100).toFixed(2));
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      const nextCents = Math.floor(parsePriceCents(props.value) / 10);
+      props.onChange((nextCents / 100).toFixed(2));
+      return;
+    }
+
+    if (event.key === "Delete") {
+      event.preventDefault();
+      props.onChange("0.00");
+    }
+  }
+
+  function onInputChange(nextRaw: string): void {
+    if (!props.digitShift) {
+      props.onChange(nextRaw);
+      return;
+    }
+
+    const cleaned = nextRaw.replace(/[^0-9.]/g, "");
+    if (!cleaned) {
+      props.onChange("0.00");
+      return;
+    }
+
+    if (cleaned.includes(".")) {
+      const parsedDecimal = Number(cleaned);
+      props.onChange((Number.isFinite(parsedDecimal) ? Math.max(0, parsedDecimal) : 0).toFixed(2));
+      return;
+    }
+
+    const cents = Number(cleaned);
+    props.onChange((Number.isFinite(cents) ? cents / 100 : 0).toFixed(2));
   }
 
   return (
@@ -118,7 +181,8 @@ function NumberField(props: {
           className="number-input"
           value={props.value}
           inputMode="decimal"
-          onChange={(event) => props.onChange(event.target.value)}
+          onKeyDown={onKeyDown}
+          onChange={(event) => onInputChange(event.target.value)}
         />
         <button type="button" className="step-btn" onClick={() => bump(props.step)}>
           +
@@ -225,10 +289,10 @@ export function App(): JSX.Element {
       <section className="card">
         <h2>Dashboard</h2>
         <MetricRow label="NAV" points={dashboard.navPoints} tone="balance" />
-        <MetricRow label="Cash" points={dashboard.cashPoints} tone="balance" />
-        <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" />
-        <MetricRow label="Realized Today" points={dashboard.realizedTodayPoints} tone="profit" />
-        <MetricRow label="Realized Week" points={dashboard.realizedWeekPoints} tone="profit" />
+        <MetricRow label="Option Values" points={dashboard.marketValuePoints} tone="balance" />
+        <MetricRow label="Cash" points={dashboard.cashPoints} tone="balance" showKrw={false} />
+        <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed />
+        <MetricRow label="Realized P&L" points={dashboard.realizedTodayPoints} tone="profit" signed />
       </section>
 
       <section className="card">
@@ -262,21 +326,27 @@ export function App(): JSX.Element {
           <p className="empty-state">No open positions yet.</p>
         ) : (
           <div className="positions-list">
-            {state.openPositions.map((position) => (
-              <button
-                key={position.id}
-                type="button"
-                className="position-item"
-                onClick={() => openPositionActions(position)}
-              >
-                <span>
-                  {position.underlying} {position.type} {position.strike}
-                </span>
-                <span>
-                  {position.qty} @ {formatPoints(position.currentPrice)}
-                </span>
-              </button>
-            ))}
+            {state.openPositions.map((position) => {
+              const pnlPoints = (position.currentPrice - position.entryPrice) * position.qty;
+              return (
+                <button
+                  key={position.id}
+                  type="button"
+                  className="position-item"
+                  onClick={() => openPositionActions(position)}
+                >
+                  <span className="position-line-main">
+                    {position.underlying} {position.type} {position.strike}
+                  </span>
+                  <span className="position-line-sub">
+                    Qty {position.qty} | Avg {formatPoints(position.entryPrice)} | Mark {formatPoints(position.currentPrice)}
+                  </span>
+                  <span className={`position-line-pnl ${valueColor(pnlPoints, "profit")}`}>
+                    P&L {formatSignedPoints(pnlPoints)} pt
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
       </section>
@@ -343,6 +413,7 @@ export function App(): JSX.Element {
               value={tradeForm.price}
               step={0.05}
               min={0}
+              digitShift
               onChange={(value) => setTradeForm((current) => ({ ...current, price: value }))}
             />
 
@@ -371,6 +442,7 @@ export function App(): JSX.Element {
               value={positionActionForm.price}
               step={0.05}
               min={0}
+              digitShift
               onChange={(value) => setPositionActionForm((current) => ({ ...current, price: value }))}
             />
 
@@ -400,3 +472,4 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
