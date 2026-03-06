@@ -43,17 +43,19 @@ body {
 }
 
 .card-topline-open {
-  margin-bottom: 6px;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
-.new-trade-btn {
-  margin-bottom: 6px;
+.card-topline-open h2 {
+  margin: 0;
 }
 
 .kospi-row {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+  align-items: end;
 }
 
 .metric-row {
@@ -101,18 +103,13 @@ body {
   cursor: pointer;
 }
 
-.metric-sub-hint {
-  text-align: right;
-  color: #6b7892;
-  font-size: 0.78rem;
-}
-
 .primary-btn,
 .ghost-btn,
 .step-btn,
 .toggle-btn,
 .position-item,
-.danger-btn {
+.danger-btn,
+.icon-btn {
   border: 0;
   border-radius: 12px;
   font: inherit;
@@ -139,6 +136,18 @@ body {
   font-weight: 600;
 }
 
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #edf2fa;
+  color: #1d2f4f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
 .empty-state {
   margin: 2px 0 0;
   color: #5f6d88;
@@ -161,6 +170,8 @@ body {
   gap: 4px;
   color: #18243d;
   text-align: left;
+  transition: transform 0.12s ease;
+  touch-action: pan-y;
 }
 
 .position-row {
@@ -189,6 +200,25 @@ body {
   font-weight: 600;
 }
 
+.position-value-chip {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.new-trade-footer-btn {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.put-color {
+  color: #cc1b1b;
+}
+
+.call-color {
+  color: #1b5fe0;
+}
+
 .sheet-overlay {
   position: fixed;
   inset: 0;
@@ -210,10 +240,15 @@ body {
   gap: 10px;
 }
 
-.sheet-subtitle {
-  margin: -6px 0 0;
-  color: #42567a;
-  font-size: 0.92rem;
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sheet-header h2 {
+  margin: 0;
 }
 
 .form-row {
@@ -273,10 +308,6 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-}
-
-.sheet-actions-3 {
-  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .reset-card summary {
@@ -339,3 +370,4 @@ body {
 .neg {
   color: #cc1b1b;
 }
+

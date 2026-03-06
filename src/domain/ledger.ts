@@ -102,7 +102,19 @@ export function calculateMarketValuePoints(openPositions: OpenPosition[]): numbe
 }
 
 export function sortOpenPositions(openPositions: OpenPosition[]): OpenPosition[] {
-  return [...openPositions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  const underlyingOrder: Record<UnderlyingType, number> = { Mon: 0, Thu: 1, Month: 2 };
+  const typeOrder: Record<PositionType, number> = { Call: 0, Put: 1 };
+
+  return [...openPositions].sort((a, b) => {
+    const underlyingDiff = underlyingOrder[a.underlying] - underlyingOrder[b.underlying];
+    if (underlyingDiff !== 0) return underlyingDiff;
+
+    const typeDiff = typeOrder[a.type] - typeOrder[b.type];
+    if (typeDiff !== 0) return typeDiff;
+
+    if (a.type === "Call") return a.strike - b.strike;
+    return b.strike - a.strike;
+  });
 }
 
 export function addTrade(state: LedgerState, trade: NewTradeInput, now: Date = new Date()): LedgerState {
@@ -235,8 +247,8 @@ export function applyKospiIntrinsicAll(state: LedgerState, kospi200: number, now
 export function getDefaultUnderlying(now: Date): UnderlyingType {
   const day = now.getDay();
   const hour = now.getHours();
-  const inThuWindow = (day === 4 && hour >= 3) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 3);
-  return inThuWindow ? "Thu" : "Mon";
+  const inMonWindow = (day === 4 && hour >= 3) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 3);
+  return inMonWindow ? "Mon" : "Thu";
 }
 
 export function buildDashboard(state: LedgerState): DashboardSnapshot {
@@ -253,3 +265,6 @@ export function buildDashboard(state: LedgerState): DashboardSnapshot {
     realizedWeekPoints: state.realizedWeekPoints,
   };
 }
+
+
+

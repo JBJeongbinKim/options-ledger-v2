@@ -113,10 +113,34 @@ describe("ledger domain", () => {
     expect(put2?.currentPrice).toBe(0);
   });
 
-  test("default underlying is Thu between Thu 3AM and Mon 3AM, otherwise Mon", () => {
-    expect(getDefaultUnderlying(new Date("2026-03-06T12:00:00"))).toBe("Thu");
-    expect(getDefaultUnderlying(new Date("2026-03-10T12:00:00"))).toBe("Mon");
-    expect(getDefaultUnderlying(new Date("2026-03-05T02:30:00"))).toBe("Mon");
-    expect(getDefaultUnderlying(new Date("2026-03-05T04:00:00"))).toBe("Thu");
+  test("sorts open positions by underlying, type, and strike", () => {
+    let state = createInitialLedgerState();
+    state = addTrade(state, { underlying: "Thu", type: "Call", strike: 350, qty: 1, price: 1 });
+    state = addTrade(state, { underlying: "Mon", type: "Call", strike: 355, qty: 1, price: 1 });
+    state = addTrade(state, { underlying: "Mon", type: "Put", strike: 340, qty: 1, price: 1 });
+    state = addTrade(state, { underlying: "Mon", type: "Put", strike: 360, qty: 1, price: 1 });
+    state = addTrade(state, { underlying: "Mon", type: "Call", strike: 345, qty: 1, price: 1 });
+    state = addTrade(state, { underlying: "Month", type: "Put", strike: 330, qty: 1, price: 1 });
+
+    const labels = state.openPositions.map((position) => `${position.underlying}-${position.type}-${position.strike}`);
+
+    expect(labels).toEqual([
+      "Mon-Call-345",
+      "Mon-Call-355",
+      "Mon-Put-360",
+      "Mon-Put-340",
+      "Thu-Call-350",
+      "Month-Put-330",
+    ]);
+  });
+  test("default underlying is Mon after Thu 3AM through before Mon 3AM, otherwise Thu", () => {
+    expect(getDefaultUnderlying(new Date("2026-03-06T12:00:00"))).toBe("Mon");
+    expect(getDefaultUnderlying(new Date("2026-03-10T12:00:00"))).toBe("Thu");
+    expect(getDefaultUnderlying(new Date("2026-03-05T02:30:00"))).toBe("Thu");
+    expect(getDefaultUnderlying(new Date("2026-03-05T04:00:00"))).toBe("Mon");
   });
 });
+
+
+
+
