@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   addTrade,
+  applyKospiIntrinsicAll,
   buildDashboard,
   closePosition,
   getDefaultUnderlying,
@@ -133,6 +134,7 @@ export function App(): JSX.Element {
   const [tradeForm, setTradeForm] = useState<TradeFormState>(() => createTradeDefaults(loadLedgerState()));
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
+  const [kospiInput, setKospiInput] = useState<string>("");
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
   const selectedPosition = useMemo(
@@ -193,11 +195,18 @@ export function App(): JSX.Element {
     closePositionActions();
   }
 
+  function handleApplyKospiAll(): void {
+    const kospi = Number(kospiInput);
+    if (!Number.isFinite(kospi)) return;
+    const nextState = applyKospiIntrinsicAll(state, kospi);
+    commit(nextState);
+  }
+
   return (
     <main className="app-shell">
       <header className="header">
         <h1>Options Ledger</h1>
-        <p>Single-user local ledger</p>\n        <p className="build-marker">Build check: phase-4 / 649a8fc</p>
+        <p>Single-user local ledger</p>
       </header>
 
       <section className="card">
@@ -207,6 +216,25 @@ export function App(): JSX.Element {
         <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" />
         <MetricRow label="Realized Today" points={dashboard.realizedTodayPoints} tone="profit" />
         <MetricRow label="Realized Week" points={dashboard.realizedWeekPoints} tone="profit" />
+      </section>
+
+      <section className="card">
+        <div className="card-topline">
+          <h2>KOSPI200 Apply-All</h2>
+        </div>
+        <div className="kospi-row">
+          <input
+            aria-label="KOSPI200"
+            className="number-input"
+            value={kospiInput}
+            inputMode="decimal"
+            placeholder="Enter KOSPI200"
+            onChange={(event) => setKospiInput(event.target.value)}
+          />
+          <button type="button" className="primary-btn" onClick={handleApplyKospiAll}>
+            Apply All
+          </button>
+        </div>
       </section>
 
       <section className="card">
@@ -339,5 +367,3 @@ export function App(): JSX.Element {
     </main>
   );
 }
-
-

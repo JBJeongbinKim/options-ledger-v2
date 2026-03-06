@@ -82,4 +82,18 @@ describe("App dashboard", () => {
     expect(screen.getByText("16.50 pt")).toBeInTheDocument();
     expect(screen.getAllByText("0.50 pt").length).toBeGreaterThan(0);
   });
+
+  test("apply-all updates open positions using intrinsic values", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await addBaseTrade(user);
+
+    await user.type(screen.getByLabelText("KOSPI200"), "360");
+    await user.click(screen.getByRole("button", { name: "Apply All" }));
+
+    expect(screen.getByText("1 @ 10.00")).toBeInTheDocument();
+    expect(screen.getByText("8.75 pt")).toBeInTheDocument();
+  });
 });

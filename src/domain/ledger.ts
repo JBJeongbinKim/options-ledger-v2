@@ -144,6 +144,24 @@ export function closePosition(
   };
 }
 
+export function applyKospiIntrinsicAll(state: LedgerState, kospi200: number, now: Date = new Date()): LedgerState {
+  const underlying = Math.max(0, kospi200);
+  const updated = state.openPositions.map((position) => {
+    const intrinsic =
+      position.type === "Call" ? Math.max(0, underlying - position.strike) : Math.max(0, position.strike - underlying);
+
+    return {
+      ...position,
+      currentPrice: intrinsic,
+      updatedAt: now.toISOString(),
+    };
+  });
+
+  return {
+    ...state,
+    openPositions: sortOpenPositions(updated),
+  };
+}
 export function getDefaultUnderlying(now: Date): UnderlyingType {
   const day = now.getDay();
   const hour = now.getHours();
@@ -171,3 +189,4 @@ export function buildDashboard(state: LedgerState): DashboardSnapshot {
     realizedWeekPoints: state.realizedWeekPoints,
   };
 }
+

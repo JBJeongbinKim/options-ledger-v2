@@ -1,5 +1,6 @@
 import {
   addTrade,
+  applyKospiIntrinsicAll,
   buildDashboard,
   closePosition,
   createInitialLedgerState,
@@ -79,6 +80,37 @@ describe("ledger domain", () => {
     expect(next.openPositions[0].qty).toBe(1);
     expect(next.realizedTodayPoints).toBe(0.5);
     expect(next.realizedWeekPoints).toBe(0.5);
+  });
+
+  test("apply-all sets intrinsic value to call and put", () => {
+    let state = addTrade(createInitialLedgerState(), {
+      underlying: "Thu",
+      type: "Call",
+      strike: 350,
+      qty: 1,
+      price: 1,
+    });
+    state = addTrade(state, {
+      underlying: "Thu",
+      type: "Put",
+      strike: 340,
+      qty: 1,
+      price: 1,
+    });
+
+    const next = applyKospiIntrinsicAll(state, 345, new Date("2026-03-05T12:00:00.000Z"));
+    const call = next.openPositions.find((position) => position.type === "Call");
+    const put = next.openPositions.find((position) => position.type === "Put");
+
+    expect(call?.currentPrice).toBe(0);
+    expect(put?.currentPrice).toBe(0);
+
+    const next2 = applyKospiIntrinsicAll(next, 360, new Date("2026-03-05T12:10:00.000Z"));
+    const call2 = next2.openPositions.find((position) => position.type === "Call");
+    const put2 = next2.openPositions.find((position) => position.type === "Put");
+
+    expect(call2?.currentPrice).toBe(10);
+    expect(put2?.currentPrice).toBe(0);
   });
 
   test("default underlying follows Thu 3 AM to Mon 3 AM rule", () => {

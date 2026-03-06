@@ -52,6 +52,12 @@ body {
   gap: 8px;
 }
 
+.kospi-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
 .metric-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -237,5 +243,3 @@ body {
 .neg {
   color: #cc1b1b;
 }
-`r`n
-
