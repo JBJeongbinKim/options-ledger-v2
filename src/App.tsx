@@ -427,6 +427,7 @@ export function App(): JSX.Element {
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
   const [pendingImportForm, setPendingImportForm] = useState<PendingImportFormState | null>(null);
   const [pendingImportId, setPendingImportId] = useState<string | null>(null);
+  const serverImportEnabled = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
   const pendingReconcile = useRef(0);
   const touchStartX = useRef<Record<string, number>>({});
   const longPressTimers = useRef<Record<string, number>>({});
@@ -440,7 +441,7 @@ export function App(): JSX.Element {
   );
 
   async function acknowledgePendingImport(): Promise<void> {
-    if (!pendingImportId || typeof fetch !== "function") return;
+    if (!serverImportEnabled || !pendingImportId || typeof fetch !== "function") return;
 
     const id = pendingImportId;
     setPendingImportId(null);
@@ -452,7 +453,7 @@ export function App(): JSX.Element {
   }
 
   async function loadServerPendingImport(): Promise<void> {
-    if (pendingImportForm || typeof fetch !== "function") return;
+    if (!serverImportEnabled || pendingImportForm || typeof fetch !== "function") return;
 
     try {
       const response = await fetch("/api/pending-imports");

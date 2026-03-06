@@ -1,31 +1,68 @@
 ﻿import { peekNext, readQueue, removeById, QueueUnavailableError } from "./_lib/queue";
 
-export default async function handler(request: Request): Promise<Response> {
+function isNodeResponse(res: unknown): res is { status: (code: number) => { json: (body: unknown) => unknown } } {
+  return Boolean(
+    res &&
+      typeof (res as { status?: unknown }).status === "function" &&
+      typeof (res as { json?: unknown }).json === "function",
+  );
+}
+
+function jsonReply(status: number, body: unknown, res?: unknown): unknown {
+  if (isNodeResponse(res)) {
+    return res.status(status).json(body);
+  }
+
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function readMethod(req: unknown): string {
+  const method = (req as { method?: unknown })?.method;
+  return typeof method === "string" ? method : "GET";
+}
+
+function readQueryId(req: unknown): string {
+  const queryId = (req as { query?: { id?: unknown } })?.query?.id;
+  if (typeof queryId === "string" && queryId.trim()) return queryId.trim();
+
+  const requestUrl = (req as { url?: unknown })?.url;
+  if (typeof requestUrl === "string") {
+    return new URL(requestUrl, "https://placeholder.local").searchParams.get("id")?.trim() ?? "";
+  }
+
+  return "";
+}
+
+export default async function handler(req: unknown, res?: unknown): Promise<unknown> {
   try {
-    if (request.method === "GET") {
+    const method = readMethod(req);
+
+    if (method === "GET") {
       const item = await peekNext();
       const queue = await readQueue();
-      return Response.json({ item, count: queue.length }, { status: 200 });
+      return jsonReply(200, { item, count: queue.length }, res);
     }
 
-    if (request.method === "DELETE") {
-      const url = new URL(request.url);
-      const id = String(url.searchParams.get("id") ?? "").trim();
+    if (method === "DELETE") {
+      const id = readQueryId(req);
       if (!id) {
-        return Response.json({ error: "id query parameter is required" }, { status: 400 });
+        return jsonReply(400, { error: "id query parameter is required" }, res);
       }
 
       const removed = await removeById(id);
-      return Response.json({ ok: true, removed }, { status: 200 });
+      return jsonReply(200, { ok: true, removed }, res);
     }
 
-    return Response.json({ error: "Method Not Allowed" }, { status: 405 });
+    return jsonReply(405, { error: "Method Not Allowed" }, res);
   } catch (error) {
     if (error instanceof QueueUnavailableError) {
-      return Response.json({ error: error.message }, { status: 503 });
+      return jsonReply(503, { error: error.message }, res);
     }
 
     const message = error instanceof Error ? error.message : "Unknown server error";
-    return Response.json({ error: message }, { status: 500 });
+    return jsonReply(500, { error: message }, res);
   }
 }
