@@ -41,6 +41,11 @@ export function App(): JSX.Element {
         <MetricRow label="Realized Today" points={dashboard.realizedTodayPoints} tone="profit" />
         <MetricRow label="Realized Week" points={dashboard.realizedWeekPoints} tone="profit" />
       </section>
+
+      <section className="card">
+        <h2>Open Positions</h2>
+        <p className="empty-state">No open positions yet.</p>
+      </section>
     </main>
   );
 }
