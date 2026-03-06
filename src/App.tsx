@@ -131,12 +131,12 @@ function parseSmsImportAction(message: string, referenceDate: Date): SmsImportAc
 
   const typeMatch = normalized.match(/\b([CP])\b/i);
   const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
-  const qtyMatch = normalized.match(/([0-9]+)\s*계약/i);
+  const qtyMatch = normalized.match(/([0-9,]+)\s*계약/i);
   const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
   if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
 
   const parsedStrike = Number(strikeMatch[1]);
-  const parsedQty = Number(qtyMatch[1]);
+  const parsedQty = Number(qtyMatch[1].replace(/,/g, ""));
   const parsedPrice = Number(priceMatch[1]);
   if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
 
@@ -834,6 +834,7 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
 
 
 
