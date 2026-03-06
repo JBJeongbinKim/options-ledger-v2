@@ -1,36 +1,17 @@
-export type PositionType = "Call" | "Put";
-export type UnderlyingType = "Mon" | "Thu" | "Month";
-
-export interface PendingServerImport {
-  id: string;
-  mode: "buy" | "sell";
-  underlying: UnderlyingType;
-  type: PositionType;
-  strike: number;
-  qty: number;
-  price: number;
-  sentAt: string;
-  createdAt: string;
-}
-
-function resolveWeeklyUnderlyingByTime(referenceDate: Date): UnderlyingType {
+﻿function resolveWeeklyUnderlyingByTime(referenceDate) {
   const day = referenceDate.getDay();
   const hour = referenceDate.getHours();
   const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
   return inMonWindow ? "Mon" : "Thu";
 }
 
-function inferUnderlyingFromText(message: string, referenceDate: Date): UnderlyingType {
+function inferUnderlyingFromText(message, referenceDate) {
   if (/\uCF54\uC2A4\uD53C200/i.test(message)) return "Month";
   if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return resolveWeeklyUnderlyingByTime(referenceDate);
   return resolveWeeklyUnderlyingByTime(referenceDate);
 }
 
-export function parseIncomingSmsToPendingImport(
-  smsText: string,
-  sentAt: string | undefined,
-  now: Date = new Date(),
-): PendingServerImport | null {
+export function parseIncomingSmsToPendingImport(smsText, sentAt, now = new Date()) {
   const referenceDate = sentAt ? new Date(sentAt) : now;
   const safeReferenceDate = Number.isNaN(referenceDate.getTime()) ? now : referenceDate;
   const normalized = smsText.replace(/\r/g, "");
