@@ -217,7 +217,6 @@ function NumberField(props: {
           +
         </button>
       </div>
-      {props.showHint === false ? null : <small className="hint">step {displayStep}</small>}
     </div>
   );
 }
@@ -659,4 +658,5 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
 
