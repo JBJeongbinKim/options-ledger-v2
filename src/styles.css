@@ -1,0 +1,85 @@
+:root {
+  color: #10141f;
+  background: linear-gradient(145deg, #f8fbff, #eef3fb);
+  font-family: "SF Pro Text", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+.app-shell {
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.55rem;
+}
+
+.header p {
+  margin: 6px 0 14px;
+  color: #51607f;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #dbe5f3;
+  border-radius: 18px;
+  padding: 14px;
+  box-shadow: 0 14px 30px rgba(22, 40, 82, 0.07);
+}
+
+.card h2 {
+  margin: 2px 0 12px;
+  font-size: 1.02rem;
+}
+
+.metric-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 2px 10px;
+  padding: 9px 0;
+  border-top: 1px solid #edf2fa;
+}
+
+.metric-row:first-of-type {
+  border-top: 0;
+}
+
+.metric-label {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-weight: 600;
+}
+
+.metric-value,
+.metric-sub {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-value {
+  font-weight: 700;
+}
+
+.neutral {
+  color: #111111;
+}
+
+.pos {
+  color: #0c56d8;
+}
+
+.neg {
+  color: #cc1b1b;
+}
