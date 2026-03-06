@@ -28,3 +28,11 @@ npm run test:run
 - feature branches prefixed with `codex/`
 - one logical feature per branch/PR
 - tests required before merge
+
+## Deploy (Vercel)
+
+1. Push this branch to GitHub.
+2. In Vercel, click `Add New...` -> `Project` and import this repository.
+3. Keep defaults (framework is Vite from `vercel.json`) and deploy.
+
+After deploy, your app stays online even when your laptop is off.
