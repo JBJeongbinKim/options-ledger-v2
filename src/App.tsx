@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   addTrade,
   applyKospiIntrinsicAll,
@@ -201,6 +201,8 @@ export function App(): JSX.Element {
   const [positionActionForm, setPositionActionForm] = useState<PositionActionFormState>({ price: "0.00", qty: "1" });
   const [kospiInput, setKospiInput] = useState<string>("");
   const [resetNavInput, setResetNavInput] = useState<string>(formatPoints(state.startingNavPoints));
+  const [isBusy, setBusy] = useState(false);
+  const pendingReconcile = useRef(0);
 
   const dashboard = useMemo(() => buildDashboard(state), [state]);
   const selectedPosition = useMemo(
@@ -227,6 +229,23 @@ export function App(): JSX.Element {
     setState(nextState);
   }
 
+  function beginReconcilePulse(): void {
+    pendingReconcile.current += 1;
+    setBusy(true);
+    window.setTimeout(() => {
+      pendingReconcile.current = Math.max(0, pendingReconcile.current - 1);
+      if (pendingReconcile.current === 0) {
+        setBusy(false);
+      }
+    }, 260);
+  }
+
+  function mutate(nextState: LedgerState, after?: () => void): void {
+    commit(nextState);
+    if (after) after();
+    beginReconcilePulse();
+  }
+
   function handleSaveTrade(): void {
     const strike = Math.max(0, Math.round(Number(tradeForm.strike) || 0));
     const qty = Math.max(1, Math.round(Number(tradeForm.qty) || 1));
@@ -240,16 +259,14 @@ export function App(): JSX.Element {
       price,
     });
 
-    commit(nextState);
-    setTradeOpen(false);
+    mutate(nextState, () => setTradeOpen(false));
   }
 
   function handleUpdatePosition(): void {
     if (!selectedPosition) return;
     const price = Math.max(0, Number(positionActionForm.price) || 0);
     const nextState = updatePositionPrice(state, selectedPosition.id, price);
-    commit(nextState);
-    closePositionActions();
+    mutate(nextState, closePositionActions);
   }
 
   function handleClosePosition(): void {
@@ -257,30 +274,37 @@ export function App(): JSX.Element {
     const price = Math.max(0, Number(positionActionForm.price) || 0);
     const qty = Math.max(1, Math.round(Number(positionActionForm.qty) || selectedPosition.qty));
     const nextState = closePosition(state, selectedPosition.id, qty, price);
-    commit(nextState);
-    closePositionActions();
+    mutate(nextState, closePositionActions);
   }
 
   function handleApplyKospiAll(): void {
     const kospi = Number(kospiInput);
     if (!Number.isFinite(kospi)) return;
     const nextState = applyKospiIntrinsicAll(state, kospi);
-    commit(nextState);
+    mutate(nextState);
   }
 
   function handleHardReset(): void {
     const navPoints = Math.max(0, Number(resetNavInput) || 17);
     const nextState = createInitialLedgerState(navPoints);
     saveResetNavPoints(navPoints);
-    commit(nextState);
-    setTradeOpen(false);
-    setSelectedPositionId(null);
-    setKospiInput("");
-    setResetNavInput(formatPoints(navPoints));
+    mutate(nextState, () => {
+      setTradeOpen(false);
+      setSelectedPositionId(null);
+      setKospiInput("");
+      setResetNavInput(formatPoints(navPoints));
+    });
   }
 
   return (
     <main className="app-shell">
+      {isBusy ? (
+        <div className="busy-indicator" role="status" aria-live="polite">
+          <span className="busy-dot" />
+          Processing...
+        </div>
+      ) : null}
+
       <section className="card">
         <MetricRow label="NAV" points={dashboard.navPoints} tone="balance" />
         <MetricRow label="Option Values" points={dashboard.marketValuePoints} tone="balance" showKrw={false} />

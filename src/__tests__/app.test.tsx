@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 
@@ -84,5 +84,17 @@ describe("App dashboard", () => {
     expect(screen.getByText("No open positions yet.")).toBeInTheDocument();
     expect(screen.getAllByText("20.00 pt").length).toBeGreaterThan(0);
   });
-});
 
+  test("shows processing indicator during mutation reconcile", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await addBaseTrade(user);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Processing...");
+    await waitFor(() => {
+      expect(screen.queryByText("Processing...")).not.toBeInTheDocument();
+    });
+  });
+});

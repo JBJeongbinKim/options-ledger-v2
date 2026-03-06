@@ -281,3 +281,39 @@ body {
 .neg {
   color: #cc1b1b;
 }
+
+.busy-indicator {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #11264c;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  box-shadow: 0 8px 20px rgba(10, 20, 41, 0.3);
+}
+
+.busy-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  animation: busy-pulse 0.9s ease-in-out infinite;
+}
+
+@keyframes busy-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
