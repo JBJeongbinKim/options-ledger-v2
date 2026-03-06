@@ -1,34 +1,31 @@
-import { peekNext, readQueue, removeById, QueueUnavailableError } from "./_lib/queue";
+﻿import { peekNext, readQueue, removeById, QueueUnavailableError } from "./_lib/queue";
 
-export default async function handler(req: any, res: any): Promise<void> {
+export default async function handler(request: Request): Promise<Response> {
   try {
-    if (req.method === "GET") {
+    if (request.method === "GET") {
       const item = await peekNext();
       const queue = await readQueue();
-      res.status(200).json({ item, count: queue.length });
-      return;
+      return Response.json({ item, count: queue.length }, { status: 200 });
     }
 
-    if (req.method === "DELETE") {
-      const id = String(req.query?.id ?? "").trim();
+    if (request.method === "DELETE") {
+      const url = new URL(request.url);
+      const id = String(url.searchParams.get("id") ?? "").trim();
       if (!id) {
-        res.status(400).json({ error: "id query parameter is required" });
-        return;
+        return Response.json({ error: "id query parameter is required" }, { status: 400 });
       }
 
       const removed = await removeById(id);
-      res.status(200).json({ ok: true, removed });
-      return;
+      return Response.json({ ok: true, removed }, { status: 200 });
     }
 
-    res.status(405).json({ error: "Method Not Allowed" });
+    return Response.json({ error: "Method Not Allowed" }, { status: 405 });
   } catch (error) {
     if (error instanceof QueueUnavailableError) {
-      res.status(503).json({ error: error.message });
-      return;
+      return Response.json({ error: error.message }, { status: 503 });
     }
 
     const message = error instanceof Error ? error.message : "Unknown server error";
-    res.status(500).json({ error: message });
+    return Response.json({ error: message }, { status: 500 });
   }
 }
