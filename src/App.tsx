@@ -91,13 +91,6 @@ function createPositionActionDefaults(position: OpenPosition): PositionActionFor
 }
 
 
-function resolveWeeklyUnderlyingByTime(referenceDate: Date): UnderlyingType {
-  const day = referenceDate.getDay();
-  const hour = referenceDate.getHours();
-  const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
-  return inMonWindow ? "Mon" : "Thu";
-}
-
 function parseReferenceDateFromParams(params: URLSearchParams): Date {
   const sentAt = params.get("sentAt");
   if (!sentAt) return new Date();
@@ -107,8 +100,9 @@ function parseReferenceDateFromParams(params: URLSearchParams): Date {
 }
 
 function inferUnderlyingFromText(message: string, referenceDate: Date): UnderlyingType {
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9ACM/i.test(message)) return "Mon";
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return "Thu";
   if (/\uCF54\uC2A4\uD53C200/i.test(message)) return "Month";
-  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return resolveWeeklyUnderlyingByTime(referenceDate);
   return getDefaultUnderlying(referenceDate);
 }
 
@@ -146,6 +140,32 @@ interface PendingServerImport {
   strike: number;
   qty: number;
   price: number;
+}
+
+interface PendingImportItem extends PendingImportFormState {
+  id: string;
+  source: "local" | "server";
+}
+
+function createPendingImportItem(action: SmsImportAction, id: string, source: "local" | "server"): PendingImportItem {
+  return {
+    id,
+    source,
+    ...toPendingImportForm(action),
+  };
+}
+
+function toPendingImportItemFromServer(item: PendingServerImport): PendingImportItem {
+  return {
+    id: item.id,
+    source: "server",
+    mode: item.mode,
+    underlying: item.underlying,
+    type: item.type,
+    strike: String(item.strike),
+    qty: String(item.qty),
+    price: item.price.toFixed(2),
+  };
 }
 
 function toPendingImportForm(action: SmsImportAction): PendingImportFormState {
@@ -442,8 +462,8 @@ export function App(): JSX.Element {
   const [isHydrating, setHydrating] = useState<boolean>(() => canUseServerPersistence());
   const [showNavKrw, setShowNavKrw] = useState(false);
   const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
-  const [pendingImportForm, setPendingImportForm] = useState<PendingImportFormState | null>(null);
-  const [pendingImportId, setPendingImportId] = useState<string | null>(null);
+  const [pendingImports, setPendingImports] = useState<PendingImportItem[]>([]);
+  const [activePendingImportId, setActivePendingImportId] = useState<string | null>(null);
   const serverImportEnabled = canUseServerPersistence();
   const pendingReconcile = useRef(0);
   const touchStartX = useRef<Record<string, number>>({});
@@ -456,6 +476,10 @@ export function App(): JSX.Element {
   const selectedPosition = useMemo(
     () => state.openPositions.find((position) => position.id === selectedPositionId) ?? null,
     [state.openPositions, selectedPositionId],
+  );
+  const activePendingImport = useMemo(
+    () => pendingImports.find((item) => item.id === activePendingImportId) ?? null,
+    [pendingImports, activePendingImportId],
   );
 
   useEffect(() => {
@@ -499,11 +523,9 @@ export function App(): JSX.Element {
     }
   }
 
-  async function acknowledgePendingImport(): Promise<void> {
-    if (!serverImportEnabled || !pendingImportId || typeof fetch !== "function") return;
+  async function acknowledgePendingImport(id: string, source: "local" | "server"): Promise<void> {
+    if (source !== "server" || !serverImportEnabled || typeof fetch !== "function") return;
 
-    const id = pendingImportId;
-    setPendingImportId(null);
     try {
       await fetch(`/api/pending-imports?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     } catch {
@@ -511,46 +533,51 @@ export function App(): JSX.Element {
     }
   }
 
-  async function loadServerPendingImport(): Promise<void> {
-    if (!serverImportEnabled || pendingImportForm || typeof fetch !== "function") return;
+  async function loadServerPendingImports(): Promise<void> {
+    if (!serverImportEnabled || typeof fetch !== "function") return;
 
     try {
       const response = await fetch("/api/pending-imports");
       if (!response.ok) return;
 
-      const payload = (await response.json()) as { item?: PendingServerImport | null };
-      const item = payload.item ?? null;
-      if (!item) return;
+      const payload = (await response.json()) as { queue?: PendingServerImport[]; item?: PendingServerImport | null };
+      const queue = Array.isArray(payload.queue)
+        ? payload.queue
+        : payload.item
+          ? [payload.item]
+          : [];
+      const serverItems = queue.map((item) => toPendingImportItemFromServer(item));
 
-      setPendingImportForm({
-        mode: item.mode,
-        underlying: item.underlying,
-        type: item.type,
-        strike: String(item.strike),
-        qty: String(item.qty),
-        price: item.price.toFixed(2),
+      setPendingImports((current) => {
+        const localItems = current.filter((item) => item.source === "local");
+        return [...localItems, ...serverItems];
       });
-      setPendingImportId(item.id);
     } catch {
       // Ignore transient fetch errors.
     }
   }
 
-  async function dismissPendingImport(): Promise<void> {
-    await acknowledgePendingImport();
-    setPendingImportForm(null);
-    await loadServerPendingImport();
+  async function dismissPendingImport(id: string): Promise<void> {
+    const target = pendingImports.find((item) => item.id === id);
+    if (!target) return;
+
+    setPendingImports((current) => current.filter((item) => item.id !== id));
+    if (activePendingImportId === id) {
+      setActivePendingImportId(null);
+    }
+    await acknowledgePendingImport(id, target.source);
+    void loadServerPendingImports();
   }
 
   useEffect(() => {
     const importAction = parseTradeFromUrl();
-    if (!importAction) {
-      void loadServerPendingImport();
-      return;
+    if (importAction) {
+      const localId = `local-${Date.now()}`;
+      const localItem = createPendingImportItem(importAction, localId, "local");
+      setPendingImports((current) => [localItem, ...current]);
     }
 
-    setPendingImportForm(toPendingImportForm(importAction));
-    setPendingImportId(null);
+    void loadServerPendingImports();
 
     const params = new URLSearchParams(window.location.search);
     params.delete("sms");
@@ -567,41 +594,46 @@ export function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (pendingImportForm) return;
-
     const timer = window.setInterval(() => {
-      void loadServerPendingImport();
+      void loadServerPendingImports();
     }, 30000);
 
     return () => window.clearInterval(timer);
-  }, [pendingImportForm]);
+  }, []);
 
-  function reviewParsedImport(): void {
-    if (!pendingImportForm) return;
+  function updatePendingImportItem(id: string, updates: Partial<PendingImportFormState>): void {
+    setPendingImports((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...updates } : item)),
+    );
+  }
 
-    const strike = Math.max(0, Math.round(Number(pendingImportForm.strike) || 0));
-    const qty = Math.max(1, Math.round(Number(pendingImportForm.qty) || 1));
-    const price = Math.max(0, Number(pendingImportForm.price) || 0);
+  function reviewParsedImport(id: string): void {
+    const pendingImport = pendingImports.find((item) => item.id === id);
+    if (!pendingImport) return;
 
-    if (pendingImportForm.mode === "buy") {
-      setTradeForm({
-        underlying: pendingImportForm.underlying,
-        type: pendingImportForm.type,
-        strike: String(strike),
-        qty: String(qty),
-        price: price.toFixed(2),
+    const strike = Math.max(0, Math.round(Number(pendingImport.strike) || 0));
+    const qty = Math.max(1, Math.round(Number(pendingImport.qty) || 1));
+    const price = Math.max(0, Number(pendingImport.price) || 0);
+
+    if (pendingImport.mode === "buy") {
+      const nextState = addTrade(state, {
+        underlying: pendingImport.underlying,
+        type: pendingImport.type,
+        strike,
+        qty,
+        price,
       });
-      setTradeOpen(true);
-      window.setTimeout(() => strikeInputRef.current?.focus(), 0);
-      void acknowledgePendingImport();
-      setPendingImportForm(null);
+      void acknowledgePendingImport(id, pendingImport.source);
+      setPendingImports((current) => current.filter((item) => item.id !== id));
+      setActivePendingImportId(null);
+      mutate(nextState);
       return;
     }
 
     const target = state.openPositions.find(
       (position) =>
-        position.underlying === pendingImportForm.underlying &&
-        position.type === pendingImportForm.type &&
+        position.underlying === pendingImport.underlying &&
+        position.type === pendingImport.type &&
         position.strike === strike,
     );
 
@@ -612,14 +644,15 @@ export function App(): JSX.Element {
 
     setSelectedPositionId(target.id);
     setPositionActionForm({
-      underlying: pendingImportForm.underlying,
-      type: pendingImportForm.type,
+      underlying: pendingImport.underlying,
+      type: pendingImport.type,
       strike: String(strike),
       price: price.toFixed(2),
       qty: String(Math.min(target.qty, qty)),
     });
-    void acknowledgePendingImport();
-    setPendingImportForm(null);
+    void acknowledgePendingImport(id, pendingImport.source);
+    setPendingImports((current) => current.filter((item) => item.id !== id));
+    setActivePendingImportId(null);
   }
 
   function openTradeSheet(): void {
@@ -824,67 +857,6 @@ export function App(): JSX.Element {
 
   return (
     <main className="app-shell">
-      {pendingImportForm ? (
-        <section className="card">
-          <div className="card-topline">
-            <h2>Parsed Transaction</h2>
-          </div>
-          <p className="empty-state">Tap fields to edit before review.</p>
-
-          <ToggleGroup
-            label="Underlying"
-            value={pendingImportForm.underlying}
-            options={["Mon", "Thu", "Month"]}
-            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, underlying: value } : current))}
-          />
-
-          <ToggleGroup
-            label="Type"
-            value={pendingImportForm.type}
-            options={["Call", "Put"]}
-            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, type: value } : current))}
-          />
-
-          <NumberField
-            label="Strike"
-            value={pendingImportForm.strike}
-            integer
-            step={1}
-            min={0}
-            showHint={false}
-            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, strike: value } : current))}
-          />
-
-          <NumberField
-            label="Qty"
-            value={pendingImportForm.qty}
-            integer
-            step={1}
-            min={1}
-            showHint={false}
-            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, qty: value } : current))}
-          />
-
-          <NumberField
-            label="Price"
-            value={pendingImportForm.price}
-            step={0.05}
-            min={0}
-            digitShift
-            showHint={false}
-            onChange={(value) => setPendingImportForm((current) => (current ? { ...current, price: value } : current))}
-          />
-
-          <div className="sheet-actions">
-            <button type="button" className="ghost-btn" onClick={() => void dismissPendingImport()}>
-              Dismiss Import
-            </button>
-            <button type="button" className="primary-btn" onClick={reviewParsedImport}>
-              Review Parsed
-            </button>
-          </div>
-        </section>
-      ) : null}
       {isBusy ? (
         <div className="busy-indicator" role="status" aria-live="polite">
           <span className="busy-dot" />
@@ -961,6 +933,51 @@ export function App(): JSX.Element {
       </section>
 
       <section className="card">
+        <div className="card-topline card-topline-open">
+          <h2>Parsed Transactions</h2>
+          <span className={`position-value-chip ${pendingImports.length > 0 ? "call-color" : "neutral"}`}>
+            {pendingImports.length}
+          </span>
+        </div>
+
+        {pendingImports.length === 0 ? (
+          <p className="empty-state">No parsed transactions yet.</p>
+        ) : (
+          <div className="positions-list">
+            {pendingImports.map((item) => (
+              <div key={item.id} className="position-item pending-import-item">
+                <button
+                  type="button"
+                  className="pending-import-main"
+                  onClick={() => setActivePendingImportId(item.id)}
+                >
+                  <div className="position-row">
+                    <span className="position-line-main">
+                      {item.underlying} <span className={positionTypeColor(item.type)}>{item.type}</span> {item.strike}
+                    </span>
+                    <span className={`position-line-sub ${item.mode === "buy" ? "call-color" : "put-color"}`}>
+                      {item.mode === "buy" ? "Buy" : "Sell"}
+                    </span>
+                  </div>
+                  <div className="position-row pending-import-meta-row">
+                    <span className="position-line-sub">Qty {item.qty} | Price {item.price}</span>
+                    <span className="position-line-sub">Tap to edit</span>
+                  </div>
+                </button>
+                <div className="pending-import-actions">
+                  <button type="button" className="ghost-btn" onClick={() => void dismissPendingImport(item.id)}>
+                    Remove
+                  </button>
+                  <button type="button" className="primary-btn" onClick={() => reviewParsedImport(item.id)}>
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      <section className="card">
         <div className="card-topline">
           <h2>KOSPI200</h2>
         </div>
@@ -1009,6 +1026,71 @@ export function App(): JSX.Element {
         </button>
       </details>
 
+      {activePendingImport ? (
+        <section className="sheet-overlay" aria-label="Pending Transaction Modal">
+          <div className="sheet">
+            <div className="sheet-header">
+              <h2>Parsed Transaction</h2>
+              <button type="button" className="icon-btn" aria-label="Close" onClick={() => setActivePendingImportId(null)}>
+                x
+              </button>
+            </div>
+
+            <ToggleGroup
+              label="Underlying"
+              value={activePendingImport.underlying}
+              options={["Mon", "Thu", "Month"]}
+              onChange={(value) => updatePendingImportItem(activePendingImport.id, { underlying: value })}
+            />
+
+            <ToggleGroup
+              label="Type"
+              value={activePendingImport.type}
+              options={["Call", "Put"]}
+              onChange={(value) => updatePendingImportItem(activePendingImport.id, { type: value })}
+            />
+
+            <NumberField
+              label="Strike"
+              value={activePendingImport.strike}
+              integer
+              step={1}
+              min={0}
+              showHint={false}
+              onChange={(value) => updatePendingImportItem(activePendingImport.id, { strike: value })}
+            />
+
+            <NumberField
+              label="Qty"
+              value={activePendingImport.qty}
+              integer
+              step={1}
+              min={1}
+              showHint={false}
+              onChange={(value) => updatePendingImportItem(activePendingImport.id, { qty: value })}
+            />
+
+            <NumberField
+              label="Price"
+              value={activePendingImport.price}
+              step={0.05}
+              min={0}
+              digitShift
+              showHint={false}
+              onChange={(value) => updatePendingImportItem(activePendingImport.id, { price: value })}
+            />
+
+            <div className="sheet-actions">
+              <button type="button" className="ghost-btn" onClick={() => void dismissPendingImport(activePendingImport.id)}>
+                Remove
+              </button>
+              <button type="button" className="primary-btn" onClick={() => reviewParsedImport(activePendingImport.id)}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
       {isTradeOpen ? (
         <section className="sheet-overlay" aria-label="New Trade Modal">
           <div className="sheet">
@@ -1139,4 +1221,9 @@ export function App(): JSX.Element {
     </main>
   );
 }
+
+
+
+
+
 

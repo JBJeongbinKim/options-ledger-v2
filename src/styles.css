@@ -193,12 +193,38 @@ body {
   touch-action: pan-y;
 }
 
+.pending-import-item {
+  gap: 10px;
+}
+
+.pending-import-main {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  font: inherit;
+}
+
+.pending-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .position-row {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.pending-import-meta-row {
+  margin-top: 6px;
 }
 
 .position-line-main {
@@ -389,3 +415,4 @@ body {
 .neg {
   color: #cc1b1b;
 }
+
