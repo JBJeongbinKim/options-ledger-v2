@@ -1,3 +1,8 @@
+function buildReferenceDate(sentAt, now = new Date()) {
+  const referenceDate = sentAt ? new Date(sentAt) : now;
+  return Number.isNaN(referenceDate.getTime()) ? now : referenceDate;
+}
+
 function inferUnderlyingFromText(message, referenceDate) {
   if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9ACM/i.test(message)) return "Mon";
   if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return "Thu";
@@ -22,34 +27,51 @@ function extractStrikeFromMessage(normalized) {
   return lastNumber ? Number(lastNumber) : null;
 }
 
-export function parseIncomingSmsToPendingImport(smsText, sentAt, now = new Date()) {
-  const referenceDate = sentAt ? new Date(sentAt) : now;
-  const safeReferenceDate = Number.isNaN(referenceDate.getTime()) ? now : referenceDate;
+export function inspectIncomingSmsParse(smsText, sentAt, now = new Date()) {
+  const safeReferenceDate = buildReferenceDate(sentAt, now);
   const normalized = smsText.replace(/\r/g, "");
 
   const isBuy = /\uB9E4\uC218/i.test(normalized);
   const isSell = /\uB9E4\uB3C4/i.test(normalized);
-  if (!isBuy && !isSell) return null;
-
   const typeMatch = normalized.match(/\b([CP])\b/i);
   const parsedStrike = extractStrikeFromMessage(normalized);
   const qtyMatch = normalized.match(/([0-9,]+)\s*\uACC4\uC57D/i);
   const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
-  if (!typeMatch || parsedStrike === null || !qtyMatch || !priceMatch) return null;
+  const underlying = inferUnderlyingFromText(normalized, safeReferenceDate);
 
-  const parsedQty = Number(qtyMatch[1].replace(/,/g, ""));
-  const parsedPrice = Number(priceMatch[1]);
-  if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
+  return {
+    normalized,
+    sentAt: safeReferenceDate.toISOString(),
+    mode: isBuy ? "buy" : isSell ? "sell" : null,
+    underlying,
+    matches: {
+      type: typeMatch?.[1]?.toUpperCase() ?? null,
+      strike: parsedStrike,
+      qty: qtyMatch?.[1] ?? null,
+      price: priceMatch?.[1] ?? null,
+    },
+  };
+}
+
+export function parseIncomingSmsToPendingImport(smsText, sentAt, now = new Date()) {
+  const inspection = inspectIncomingSmsParse(smsText, sentAt, now);
+  if (!inspection.mode) return null;
+  const { matches } = inspection;
+  if (!matches.type || matches.strike === null || !matches.qty || !matches.price) return null;
+
+  const parsedQty = Number(matches.qty.replace(/,/g, ""));
+  const parsedPrice = Number(matches.price);
+  if (!Number.isFinite(matches.strike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
 
   return {
     id: `imp-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    mode: isBuy ? "buy" : "sell",
-    underlying: inferUnderlyingFromText(normalized, safeReferenceDate),
-    type: typeMatch[1].toUpperCase() === "P" ? "Put" : "Call",
-    strike: Math.max(0, Math.round(parsedStrike)),
+    mode: inspection.mode,
+    underlying: inspection.underlying,
+    type: matches.type === "P" ? "Put" : "Call",
+    strike: Math.max(0, Math.round(matches.strike)),
     qty: Math.max(1, Math.round(parsedQty)),
     price: Math.max(0, parsedPrice),
-    sentAt: safeReferenceDate.toISOString(),
+    sentAt: inspection.sentAt,
     createdAt: now.toISOString(),
   };
 }
