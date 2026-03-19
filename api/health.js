@@ -15,5 +15,8 @@ export default async function handler(req, res) {
     now: new Date().toISOString(),
     method: req?.method ?? "unknown",
     runtime: "api-health",
+    commit: process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_GITHUB_COMMIT_SHA || "unknown",
+    environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
+    deployment: process.env.VERCEL_URL || "unknown",
   }, res);
 }
