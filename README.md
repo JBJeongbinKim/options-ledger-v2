@@ -110,3 +110,5 @@ Example JSON body:
 ```
 
 When you later open the app, it will pull the queued transaction and show it in the editable pending review card before affecting positions/P&L.
+
+Deployment note: production should always track the latest `main` commit.
