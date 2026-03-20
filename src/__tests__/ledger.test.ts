@@ -103,6 +103,28 @@ describe("ledger domain", () => {
     expect(next.cashPoints).toBeCloseTo(16.486, 6);
     expect(next.realizedTodayPoints).toBeCloseTo(0.49, 6);
     expect(next.realizedWeekPoints).toBeCloseTo(0.49, 6);
+    expect(next.realizedEvents).toHaveLength(1);
+    expect(next.realizedEvents[0].points).toBeCloseTo(0.49, 6);
+  });
+
+  test("buildDashboard calculates daily and weekly realized P&L in Eastern time", () => {
+    let state = addTrade(createInitialLedgerState(), {
+      underlying: "Thu",
+      type: "Call",
+      strike: 350,
+      qty: 3,
+      price: 1,
+    });
+    const positionId = state.openPositions[0].id;
+
+    state = closePosition(state, positionId, 1, 1.5, new Date("2026-03-16T03:30:00.000Z"));
+    state = closePosition(state, positionId, 1, 1.6, new Date("2026-03-16T05:30:00.000Z"));
+    state = closePosition(state, positionId, 1, 1.4, new Date("2026-03-22T23:30:00.000Z"));
+
+    const dashboard = buildDashboard(state, new Date("2026-03-22T23:45:00.000Z"));
+
+    expect(dashboard.realizedDayPoints).toBeCloseTo(0.3904, 6);
+    expect(dashboard.realizedWeekPoints).toBeCloseTo(0.98, 6);
   });
 
   test("apply-all sets intrinsic value to call and put", () => {

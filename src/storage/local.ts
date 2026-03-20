@@ -42,6 +42,15 @@ export function loadLedgerState(): LedgerState {
       openPositions: normalizeOpenPositions(parsed.openPositions ?? []),
       realizedTodayPoints: parsed.realizedTodayPoints ?? 0,
       realizedWeekPoints: parsed.realizedWeekPoints ?? 0,
+      realizedEvents: Array.isArray(parsed.realizedEvents)
+        ? parsed.realizedEvents
+            .filter((event) => event && typeof event.realizedAt === "string" && Number.isFinite(event.points))
+            .map((event) => ({
+              id: typeof event.id === "string" ? event.id : `legacy-${event.realizedAt}`,
+              points: event.points,
+              realizedAt: event.realizedAt,
+            }))
+        : [],
     };
   } catch {
     return createInitialLedgerState(loadResetNavPoints());

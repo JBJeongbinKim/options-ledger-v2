@@ -20,7 +20,8 @@ describe("App dashboard", () => {
     render(<App />);
 
     expect(screen.getByText("Unrealized P&L")).toBeInTheDocument();
-    expect(screen.getByText("Realized P&L")).toBeInTheDocument();
+    expect(screen.getByText("Daily P&L")).toBeInTheDocument();
+    expect(screen.getByText("Weekly P&L")).toBeInTheDocument();
     expect(screen.queryByText("Cash")).not.toBeInTheDocument();
     expect(screen.queryByText("Option Values")).not.toBeInTheDocument();
   });

@@ -878,7 +878,8 @@ export function App(): JSX.Element {
         </div>
 
         <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed showKrw={false} />
-        <MetricRow label="Realized P&L" points={dashboard.realizedTodayPoints} tone="profit" signed showKrw={false} />
+        <MetricRow label="Daily P&L" points={dashboard.realizedDayPoints} tone="profit" signed showKrw={false} />
+        <MetricRow label="Weekly P&L" points={dashboard.realizedWeekPoints} tone="profit" signed showKrw={false} />
       </section>
 
       <section className="card">
@@ -1073,7 +1074,7 @@ export function App(): JSX.Element {
             <NumberField
               label="Price"
               value={activePendingImport.price}
-              step={0.05}
+              step={0.01}
               min={0}
               digitShift
               showHint={false}
@@ -1132,7 +1133,7 @@ export function App(): JSX.Element {
             <NumberField
               label="Price"
               value={tradeForm.price}
-              step={0.05}
+              step={0.01}
               min={0}
               digitShift
               showHint={false}
@@ -1190,7 +1191,7 @@ export function App(): JSX.Element {
             <NumberField
               label="Price"
               value={positionActionForm.price}
-              step={0.05}
+              step={0.01}
               min={0}
               digitShift
               showHint={false}

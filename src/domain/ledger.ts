@@ -22,6 +22,7 @@ export interface LedgerState {
   openPositions: OpenPosition[];
   realizedTodayPoints: number;
   realizedWeekPoints: number;
+  realizedEvents: RealizedEvent[];
 }
 
 export interface DashboardSnapshot {
@@ -29,8 +30,14 @@ export interface DashboardSnapshot {
   cashPoints: number;
   marketValuePoints: number;
   unrealizedPoints: number;
-  realizedTodayPoints: number;
+  realizedDayPoints: number;
   realizedWeekPoints: number;
+}
+
+export interface RealizedEvent {
+  id: string;
+  points: number;
+  realizedAt: string;
 }
 
 export interface NewTradeInput {
@@ -87,7 +94,55 @@ export function createInitialLedgerState(resetNavPoints?: number): LedgerState {
     openPositions: [],
     realizedTodayPoints: 0,
     realizedWeekPoints: 0,
+    realizedEvents: [],
   };
+}
+
+const EASTERN_TIME_ZONE = "America/New_York";
+const easternDateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: EASTERN_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function getEasternDateId(input: Date): number {
+  const parts = easternDateFormatter.formatToParts(input);
+  const year = Number(parts.find((part) => part.type === "year")?.value ?? 0);
+  const month = Number(parts.find((part) => part.type === "month")?.value ?? 1);
+  const day = Number(parts.find((part) => part.type === "day")?.value ?? 1);
+  return Date.UTC(year, month - 1, day);
+}
+
+function getEasternWeekStartId(input: Date): number {
+  const dayId = getEasternDateId(input);
+  const weekday = new Date(dayId).getUTCDay();
+  const daysSinceMonday = (weekday + 6) % 7;
+  return dayId - daysSinceMonday * 24 * 60 * 60 * 1000;
+}
+
+function summarizeRealizedEvents(realizedEvents: RealizedEvent[], now: Date): { dayPoints: number; weekPoints: number } {
+  const currentDayId = getEasternDateId(now);
+  const currentWeekStartId = getEasternWeekStartId(now);
+
+  return realizedEvents.reduce(
+    (summary, event) => {
+      const realizedAt = new Date(event.realizedAt);
+      if (Number.isNaN(realizedAt.getTime())) return summary;
+
+      const eventDayId = getEasternDateId(realizedAt);
+      if (eventDayId === currentDayId) {
+        summary.dayPoints += event.points;
+      }
+
+      if (eventDayId >= currentWeekStartId && eventDayId <= currentDayId) {
+        summary.weekPoints += event.points;
+      }
+
+      return summary;
+    },
+    { dayPoints: 0, weekPoints: 0 },
+  );
 }
 
 export function calculateUnrealizedPoints(openPositions: OpenPosition[]): number {
@@ -257,6 +312,14 @@ export function closePosition(
     cashPoints: state.cashPoints + sellNotional - sellFee,
     realizedTodayPoints: state.realizedTodayPoints + realizedPoints,
     realizedWeekPoints: state.realizedWeekPoints + realizedPoints,
+    realizedEvents: [
+      ...state.realizedEvents,
+      {
+        id: `real-${now.getTime()}-${Math.random().toString(16).slice(2, 8)}`,
+        points: realizedPoints,
+        realizedAt: now.toISOString(),
+      },
+    ],
     openPositions: sortOpenPositions(updatedPositions),
   };
 }
@@ -287,18 +350,19 @@ export function getDefaultUnderlying(now: Date): UnderlyingType {
   return inMonWindow ? "Mon" : "Thu";
 }
 
-export function buildDashboard(state: LedgerState): DashboardSnapshot {
+export function buildDashboard(state: LedgerState, now: Date = new Date()): DashboardSnapshot {
   const marketValuePoints = calculateMarketValuePoints(state.openPositions);
   const unrealizedPoints = calculateUnrealizedPoints(state.openPositions);
   const navPoints = state.cashPoints + marketValuePoints;
+  const realizedSummary = summarizeRealizedEvents(state.realizedEvents ?? [], now);
 
   return {
     navPoints,
     cashPoints: state.cashPoints,
     marketValuePoints,
     unrealizedPoints,
-    realizedTodayPoints: state.realizedTodayPoints,
-    realizedWeekPoints: state.realizedWeekPoints,
+    realizedDayPoints: realizedSummary.dayPoints,
+    realizedWeekPoints: realizedSummary.weekPoints,
   };
 }
 

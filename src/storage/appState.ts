@@ -23,6 +23,15 @@ function normalizeLedgerState(state: LedgerState | null | undefined): LedgerStat
     openPositions: normalizeOpenPositions(parsed.openPositions ?? []),
     realizedTodayPoints: parsed.realizedTodayPoints ?? 0,
     realizedWeekPoints: parsed.realizedWeekPoints ?? 0,
+    realizedEvents: Array.isArray(parsed.realizedEvents)
+      ? parsed.realizedEvents
+          .filter((event) => event && typeof event.realizedAt === "string" && Number.isFinite(event.points))
+          .map((event) => ({
+            id: typeof event.id === "string" ? event.id : `legacy-${event.realizedAt}`,
+            points: event.points,
+            realizedAt: event.realizedAt,
+          }))
+      : [],
   };
 }
 
@@ -45,6 +54,7 @@ function isDefaultSnapshot(snapshot: PersistedAppState): boolean {
     snapshot.ledgerState.openPositions.length === 0 &&
     snapshot.ledgerState.realizedTodayPoints === 0 &&
     snapshot.ledgerState.realizedWeekPoints === 0 &&
+    snapshot.ledgerState.realizedEvents.length === 0 &&
     snapshot.kospi200Value === undefined
   );
 }
