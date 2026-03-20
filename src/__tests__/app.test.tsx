@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 
@@ -111,7 +111,9 @@ describe("App dashboard", () => {
     );
     render(<App />);
 
-    expect(await screen.findByText("Parsed Transaction")).toBeInTheDocument();
+    expect(await screen.findByText("Parsed Transactions")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /Mon Call 350/ }).find((button) => button.className.includes("pending-import-main"))!);
+    expect(await screen.findByLabelText("Strike")).toBeInTheDocument();
     expect(screen.getByLabelText("Strike")).toHaveValue("350");
     expect(screen.getByLabelText("Qty")).toHaveValue("2");
     expect(screen.getByLabelText("Price")).toHaveValue("0.88");
@@ -120,7 +122,8 @@ describe("App dashboard", () => {
     await user.clear(screen.getByLabelText("Strike"));
     await user.type(screen.getByLabelText("Strike"), "360");
 
-    await user.click(screen.getByRole("button", { name: "Review Parsed" }));
+    const pendingModal = screen.getByLabelText("Pending Transaction Modal");
+    await user.click(within(pendingModal).getByRole("button", { name: "Confirm" }));
     await user.click(screen.getByRole("button", { name: "Save Trade" }));
 
     expect(screen.getByRole("button", { name: /Mon Put 360/ })).toBeInTheDocument();
@@ -129,6 +132,7 @@ describe("App dashboard", () => {
 
   test("parses broker weekly sms format into a pending transaction", async () => {
     window.localStorage.clear();
+    const user = userEvent.setup();
 
     window.history.replaceState(
       {},
@@ -137,7 +141,9 @@ describe("App dashboard", () => {
     );
     render(<App />);
 
-    expect(await screen.findByText("Parsed Transaction")).toBeInTheDocument();
+    expect(await screen.findByText("Parsed Transactions")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /Mon Call 858/ }).find((button) => button.className.includes("pending-import-main"))!);
+    expect(await screen.findByLabelText("Strike")).toBeInTheDocument();
     expect(screen.getByLabelText("Strike")).toHaveValue("858");
     expect(screen.getByLabelText("Qty")).toHaveValue("1");
     expect(screen.getByLabelText("Price")).toHaveValue("0.88");
@@ -168,8 +174,11 @@ describe("App dashboard", () => {
     );
     render(<App />);
 
-    expect(await screen.findByText("Parsed Transaction")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Review Parsed" }));
+    expect(await screen.findByText("Parsed Transactions")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /Thu Call 350/ }).find((button) => button.className.includes("pending-import-main"))!);
+    expect(await screen.findByLabelText("Strike")).toBeInTheDocument();
+    const pendingModal = screen.getByLabelText("Pending Transaction Modal");
+    await user.click(within(pendingModal).getByRole("button", { name: "Confirm" }));
 
     expect(screen.getByText("Thu Call 350")).toBeInTheDocument();
     expect(screen.getByLabelText("Qty")).toHaveValue("1");
@@ -223,6 +232,7 @@ describe("App dashboard", () => {
     });
   });
 });
+
 
 
 

@@ -193,6 +193,25 @@ body {
   touch-action: pan-y;
 }
 
+.pending-import-item {
+  gap: 10px;
+}
+
+.pending-import-main {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.pending-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .position-row {
   width: 100%;
   display: flex;
@@ -389,3 +408,4 @@ body {
 .neg {
   color: #cc1b1b;
 }
+

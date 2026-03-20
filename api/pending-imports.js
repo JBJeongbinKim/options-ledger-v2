@@ -1,4 +1,4 @@
-﻿import { peekNext, readQueue, removeById, QueueUnavailableError } from "./_lib/queue.js";
+import { peekNext, readQueue, removeById, QueueUnavailableError } from "./_lib/queue.js";
 
 function jsonReply(status, body, res) {
   if (res && typeof res.status === "function" && typeof res.json === "function") {
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     if (method === "GET") {
       const item = await peekNext();
       const queue = await readQueue();
-      return jsonReply(200, { item, count: queue.length }, res);
+      return jsonReply(200, { item, count: queue.length, queue }, res);
     }
 
     if (method === "DELETE") {
@@ -41,3 +41,4 @@ export default async function handler(req, res) {
     return jsonReply(500, { error: message }, res);
   }
 }
+
