@@ -91,13 +91,6 @@ function createPositionActionDefaults(position: OpenPosition): PositionActionFor
 }
 
 
-function resolveWeeklyUnderlyingByTime(referenceDate: Date): UnderlyingType {
-  const day = referenceDate.getDay();
-  const hour = referenceDate.getHours();
-  const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
-  return inMonWindow ? "Mon" : "Thu";
-}
-
 function parseReferenceDateFromParams(params: URLSearchParams): Date {
   const sentAt = params.get("sentAt");
   if (!sentAt) return new Date();
@@ -107,8 +100,9 @@ function parseReferenceDateFromParams(params: URLSearchParams): Date {
 }
 
 function inferUnderlyingFromText(message: string, referenceDate: Date): UnderlyingType {
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9ACM/i.test(message)) return "Mon";
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return "Thu";
   if (/\uCF54\uC2A4\uD53C200/i.test(message)) return "Month";
-  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return resolveWeeklyUnderlyingByTime(referenceDate);
   return getDefaultUnderlying(referenceDate);
 }
 

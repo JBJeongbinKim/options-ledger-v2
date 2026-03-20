@@ -1,14 +1,12 @@
-function resolveWeeklyUnderlyingByTime(referenceDate) {
-  const day = referenceDate.getDay();
-  const hour = referenceDate.getHours();
+function inferUnderlyingFromText(message, referenceDate) {
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9ACM/i.test(message)) return "Mon";
+  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return "Thu";
+  if (/\uCF54\uC2A4\uD53C200/i.test(message)) return "Month";
+  const fallbackDate = referenceDate instanceof Date && !Number.isNaN(referenceDate.getTime()) ? referenceDate : new Date();
+  const day = fallbackDate.getDay();
+  const hour = fallbackDate.getHours();
   const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
   return inMonWindow ? "Mon" : "Thu";
-}
-
-function inferUnderlyingFromText(message, referenceDate) {
-  if (/\uCF54\uC2A4\uD53C200/i.test(message)) return "Month";
-  if (/\uCF54\uC2A4\uD53C\uC704\uD074\uB9AC/i.test(message)) return resolveWeeklyUnderlyingByTime(referenceDate);
-  return resolveWeeklyUnderlyingByTime(referenceDate);
 }
 
 function extractStrikeFromMessage(normalized) {
