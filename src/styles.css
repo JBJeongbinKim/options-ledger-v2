@@ -204,6 +204,8 @@ body {
   padding: 0;
   color: inherit;
   text-align: left;
+  display: flex;
+  flex-direction: column;
 }
 
 .pending-import-actions {
@@ -218,6 +220,10 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.pending-import-meta-row {
+  margin-top: 6px;
 }
 
 .position-line-main {

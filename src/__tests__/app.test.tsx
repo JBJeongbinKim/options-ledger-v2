@@ -124,9 +124,9 @@ describe("App dashboard", () => {
 
     const pendingModal = screen.getByLabelText("Pending Transaction Modal");
     await user.click(within(pendingModal).getByRole("button", { name: "Confirm" }));
-    await user.click(screen.getByRole("button", { name: "Save Trade" }));
 
     expect(screen.getByRole("button", { name: /Mon Put 360/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText("New Trade Modal")).not.toBeInTheDocument();
     expect(window.location.search).toBe("");
   });
 

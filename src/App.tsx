@@ -168,14 +168,6 @@ function toPendingImportItemFromServer(item: PendingServerImport): PendingImport
   };
 }
 
-function formatPendingImportTitle(item: PendingImportItem): string {
-  return `${item.underlying} ${item.type} ${item.strike}`;
-}
-
-function formatPendingImportMeta(item: PendingImportItem): string {
-  const side = item.mode === "buy" ? "Buy" : "Sell";
-  return `${side} | Qty ${item.qty} | Price ${item.price}`;
-}
 function toPendingImportForm(action: SmsImportAction): PendingImportFormState {
   if (action.mode === "buy") {
     return {
@@ -624,18 +616,17 @@ export function App(): JSX.Element {
     const price = Math.max(0, Number(pendingImport.price) || 0);
 
     if (pendingImport.mode === "buy") {
-      setTradeForm({
+      const nextState = addTrade(state, {
         underlying: pendingImport.underlying,
         type: pendingImport.type,
-        strike: String(strike),
-        qty: String(qty),
-        price: price.toFixed(2),
+        strike,
+        qty,
+        price,
       });
-      setTradeOpen(true);
-      window.setTimeout(() => strikeInputRef.current?.focus(), 0);
       void acknowledgePendingImport(id, pendingImport.source);
       setPendingImports((current) => current.filter((item) => item.id !== id));
       setActivePendingImportId(null);
+      mutate(nextState);
       return;
     }
 
@@ -962,13 +953,13 @@ export function App(): JSX.Element {
                 >
                   <div className="position-row">
                     <span className="position-line-main">
-                      {formatPendingImportTitle(item)}
+                      {item.underlying} <span className={positionTypeColor(item.type)}>{item.type}</span> {item.strike}
                     </span>
                     <span className={`position-line-sub ${item.mode === "buy" ? "call-color" : "put-color"}`}>
                       {item.mode === "buy" ? "Buy" : "Sell"}
                     </span>
                   </div>
-                  <div className="position-row">
+                  <div className="position-row pending-import-meta-row">
                     <span className="position-line-sub">Qty {item.qty} | Price {item.price}</span>
                     <span className="position-line-sub">Tap to edit</span>
                   </div>
