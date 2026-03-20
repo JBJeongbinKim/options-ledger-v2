@@ -878,7 +878,8 @@ export function App(): JSX.Element {
         </div>
 
         <MetricRow label="Unrealized P&L" points={dashboard.unrealizedPoints} tone="profit" signed showKrw={false} />
-        <MetricRow label="Realized P&L" points={dashboard.realizedTodayPoints} tone="profit" signed showKrw={false} />
+        <MetricRow label="Daily P&L" points={dashboard.realizedDayPoints} tone="profit" signed showKrw={false} />
+        <MetricRow label="Weekly P&L" points={dashboard.realizedWeekPoints} tone="profit" signed showKrw={false} />
       </section>
 
       <section className="card">
