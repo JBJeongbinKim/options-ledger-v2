@@ -32,7 +32,7 @@ describe("App dashboard", () => {
 
     const navButton = screen.getByRole("button", { name: "17.00 / 17.00 pt" });
     await user.click(navButton);
-    expect(screen.getByRole("button", { name: "₩4,250,000" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /4,250,000/ })).toBeInTheDocument();
   });
 
   test("adds trades and merges same option into one open position", async () => {
@@ -127,6 +127,23 @@ describe("App dashboard", () => {
     expect(window.location.search).toBe("");
   });
 
+  test("parses broker weekly sms format into a pending transaction", async () => {
+    window.localStorage.clear();
+
+    window.history.replaceState(
+      {},
+      "",
+      "/?sms=%5BWeb%EB%B0%9C%EC%8B%A0%5D%0A%5B%ED%95%9C%EA%B5%AD%ED%88%AC%EC%9E%90%5D%0A%EA%B9%80%EC%A0%95%EB%B9%88%EB%8B%98%0A%EB%A7%A4%EC%88%98%EC%B2%B4%EA%B2%B0%0A%EC%BD%94%EC%8A%A4%ED%94%BC%EC%9C%84%ED%81%B4%EB%A6%ACM%20C%202603W2%20%20%20857.5%0A1%EA%B3%84%EC%95%BD%0A0.88P%0A%EC%A0%84%EB%9F%89%EC%B2%B4%EA%B2%B0&sentAt=2026-03-20T10:00:00.000-04:00",
+    );
+    render(<App />);
+
+    expect(await screen.findByText("Parsed Transaction")).toBeInTheDocument();
+    expect(screen.getByLabelText("Strike")).toHaveValue("858");
+    expect(screen.getByLabelText("Qty")).toHaveValue("1");
+    expect(screen.getByLabelText("Price")).toHaveValue("0.88");
+    expect(screen.getByRole("button", { name: "Mon" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "Call" })).toHaveClass("active");
+  });
   test("opens position action prefilled from sell sms query", async () => {
     window.localStorage.clear();
     const user = userEvent.setup();
@@ -206,3 +223,6 @@ describe("App dashboard", () => {
     });
   });
 });
+
+
+

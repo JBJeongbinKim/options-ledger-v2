@@ -1,4 +1,4 @@
-﻿function resolveWeeklyUnderlyingByTime(referenceDate) {
+function resolveWeeklyUnderlyingByTime(referenceDate) {
   const day = referenceDate.getDay();
   const hour = referenceDate.getHours();
   const inMonWindow = (day === 4 && hour >= 5) || day === 5 || day === 6 || day === 0 || (day === 1 && hour < 5);
@@ -11,6 +11,19 @@ function inferUnderlyingFromText(message, referenceDate) {
   return resolveWeeklyUnderlyingByTime(referenceDate);
 }
 
+function extractStrikeFromMessage(normalized) {
+  const optionLine = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => /\b[CP]\b/i.test(line));
+
+  if (!optionLine) return null;
+
+  const numberMatches = [...optionLine.matchAll(/([0-9]+(?:\.[0-9]+)?)/g)];
+  const lastNumber = numberMatches[numberMatches.length - 1]?.[1];
+  return lastNumber ? Number(lastNumber) : null;
+}
+
 export function parseIncomingSmsToPendingImport(smsText, sentAt, now = new Date()) {
   const referenceDate = sentAt ? new Date(sentAt) : now;
   const safeReferenceDate = Number.isNaN(referenceDate.getTime()) ? now : referenceDate;
@@ -21,12 +34,11 @@ export function parseIncomingSmsToPendingImport(smsText, sentAt, now = new Date(
   if (!isBuy && !isSell) return null;
 
   const typeMatch = normalized.match(/\b([CP])\b/i);
-  const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
+  const parsedStrike = extractStrikeFromMessage(normalized);
   const qtyMatch = normalized.match(/([0-9,]+)\s*\uACC4\uC57D/i);
   const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
-  if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
+  if (!typeMatch || parsedStrike === null || !qtyMatch || !priceMatch) return null;
 
-  const parsedStrike = Number(strikeMatch[1]);
   const parsedQty = Number(qtyMatch[1].replace(/,/g, ""));
   const parsedPrice = Number(priceMatch[1]);
   if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;

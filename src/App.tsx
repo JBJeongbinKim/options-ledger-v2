@@ -169,6 +169,22 @@ function toPendingImportForm(action: SmsImportAction): PendingImportFormState {
     price: action.price.toFixed(2),
   };
 }
+function extractStrikeFromMessage(message: string): number | null {
+  const optionLine = message
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => /\b[CP]\b/i.test(line));
+
+  if (!optionLine) return null;
+
+  const numberMatches = [...optionLine.matchAll(/([0-9]+(?:\.[0-9]+)?)/g)];
+  const lastNumber = numberMatches[numberMatches.length - 1]?.[1];
+  if (!lastNumber) return null;
+
+  const parsedStrike = Number(lastNumber);
+  return Number.isFinite(parsedStrike) ? parsedStrike : null;
+}
+
 function parseSmsImportAction(message: string, referenceDate: Date): SmsImportAction | null {
   const normalized = message.replace(/\r/g, "");
   const isBuy = /\uB9E4\uC218/i.test(normalized);
@@ -176,12 +192,11 @@ function parseSmsImportAction(message: string, referenceDate: Date): SmsImportAc
   if (!isBuy && !isSell) return null;
 
   const typeMatch = normalized.match(/\b([CP])\b/i);
-  const strikeMatch = normalized.match(/\b[CP]\s+([0-9]+(?:\.[0-9]+)?)/i);
+  const parsedStrike = extractStrikeFromMessage(normalized);
   const qtyMatch = normalized.match(/([0-9,]+)\s*\uACC4\uC57D/i);
   const priceMatch = normalized.match(/([0-9]+(?:\.[0-9]+)?)\s*P\b/i);
-  if (!typeMatch || !strikeMatch || !qtyMatch || !priceMatch) return null;
+  if (!typeMatch || parsedStrike === null || !qtyMatch || !priceMatch) return null;
 
-  const parsedStrike = Number(strikeMatch[1]);
   const parsedQty = Number(qtyMatch[1].replace(/,/g, ""));
   const parsedPrice = Number(priceMatch[1]);
   if (!Number.isFinite(parsedStrike) || !Number.isFinite(parsedQty) || !Number.isFinite(parsedPrice)) return null;
